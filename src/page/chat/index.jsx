@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from "react";
 import "./index.less";
 import ReactMarkdown from "react-markdown";
-import { Button, Typography } from "antd";
+import { Button, message, Typography } from "antd";
 import TextArea from "antd/es/input/TextArea";
 import { CopyOutlined } from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode } from "../../utils";
+import { sendMessageTest } from "../../server/model";
 const { Paragraph } = Typography;
 
 const Chat = () => {
-  const [currentData, setCurrentData] = useState(null);
+  const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
   const [inputValue, setInputValue] = useState("");
-  const [inputIsTop, setInputIsTop] = useState(false); //有对话记录的清空下，输入框是否置顶
+  // const [inputIsTop, setInputIsTop] = useState(false); //有对话记录的清空下，输入框是否置顶
   const [pastedCodeData, setPastedCodeData] = useState(""); // 粘贴的代码数据
 
   const handleOnPaste = (e) => {
@@ -41,94 +42,55 @@ const Chat = () => {
   // 关联websocket，与后端建立链接，然后开始对话
   const fetchData = async () => {
     // 建立websocket链接
-
     // 建立成功，获取到当前的prompt和traceId
-
-    // 开始对话
-    handleSendMessage(true);
+    // 开始对话,这里是首次加载，基于后端已经分析出prompt的前提下
+    // handleSendMessage(true);
   };
-
   // 和模型对话
-  const handleSendMessage = (isFirst) => {
+  const handleSendMessage = async (isFirst) => {
     console.log("handleSendMessage", isFirst, isComposing, inputValue);
     if (isComposing) return;
     // 发送信息后or初次对话的时候触发当前请求
-    setInputIsTop(true);
-    // 假设已经获取到了数据
-    // const data = await fetch("http://localhost:8080/api/v1/chat/getChatData");
-    const data = {
-      traceId: "1234567890",
-      message: [
-        {
-          role: "user",
-          content: "你好，我是小明，我有一个问题需要你帮我解决。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "好的，谢谢你。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "你好，我是小明，我有一个问题需要你帮我解决。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "好的，谢谢你。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "你好，我是小明，我有一个问题需要你帮我解决。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "好的，谢谢你。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "你好，我是小明，我有一个问题需要你帮我解决。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        },
-        {
-          role: "user",
-          content: "好的，谢谢你。"
-        },
-        {
-          role: "assistant",
-          content: "好的，我会帮你解决这个问题。"
-        }
-      ]
+    setIsComposing(true);
+    // setInputIsTop(true);
+
+    // 前端校验结束，那么录入信息
+    const nowUserMessage = {
+      role: "user",
+      content: inputValue
     };
+    setCurrentData((prevData) => ({
+      ...prevData,
+      message: [...prevData?.message, nowUserMessage]
+    }));
+
+    // 已经建立链接，已经录入问题，已经得到prompt，开始请求
+    try {
+      const response = await sendMessageTest(inputValue);
+      console.log("response前端js", response);
+      if (response) {
+        const nowAssistantResponse = {
+          role: "assistant",
+          content: response.message.content
+        };
+        setCurrentData((prevData) => ({
+          ...prevData,
+          message: [...prevData?.message, nowAssistantResponse]
+        }));
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+    } finally {
+      setInputValue("");
+      setIsComposing(false);
+    }
+
+    // 假设已经获取到了数据
+
     // 判断请求是否成功
 
     // 成功后判断是否存在上下文
-    setCurrentData(data);
+    // setCurrentData(data);
   };
 
   useEffect(() => {
@@ -213,51 +175,49 @@ const Chat = () => {
 
   return (
     <div className="chat-box" style={{ margin: "10px" }}>
-      {currentData ? (
-        <div className="chat-container">
-          <div className="chat-content">
-            <div className="chat-content-item">
-              {currentData?.message.length === 0 ? (
-                <div>{InputComponent("top")}</div>
-              ) : (
-                <div className="chat-content-item-content">
-                  {currentData?.message.map((item, index) => (
-                    <>
-                      <div
-                        key={index}
-                        className={`inputContainer ${
-                          item.role === "user" ? "user" : "assistant"
-                        }`}
-                      >
-                        <div className="chat-content-item-content-user-text-copy">
-                          <CopyOutlined
-                            onClick={() => handleCopyMessage(item)}
-                          />
-                        </div>
-                        <div className="chat-content-item-content-user-text">
-                          <div className="chat-content-item-content-user-text-content">
-                            <ReactMarkdown>{item.content}</ReactMarkdown>
-                          </div>
-                        </div>
-                        <div className="chat-content-item-content-time">
-                          {new Date().toLocaleTimeString()}
+      {/* {currentData ? ( */}
+      <div className="chat-container">
+        <div className="chat-content">
+          <div className="chat-content-item">
+            {!currentData?.message?.length ? (
+              <div>{InputComponent("top")}</div>
+            ) : (
+              <div className="chat-content-item-content">
+                {currentData?.message.map((item, index) => (
+                  <>
+                    <div
+                      key={index}
+                      className={`inputContainer ${
+                        item.role === "user" ? "user" : "assistant"
+                      }`}
+                    >
+                      <div className="chat-content-item-content-user-text-copy">
+                        <CopyOutlined onClick={() => handleCopyMessage(item)} />
+                      </div>
+                      <div className="chat-content-item-content-user-text">
+                        <div className="chat-content-item-content-user-text-content">
+                          <ReactMarkdown>{item.content}</ReactMarkdown>
                         </div>
                       </div>
-                    </>
-                  ))}
-                  <div className="chat-content-item-content-empty">
-                    {pastedCodeData}
-                    {pastedCodeData ? CodeDisplay(pastedCodeData) : null}
-                    {InputComponent("bottom")}
-                  </div>
+                      <div className="chat-content-item-content-time">
+                        {new Date().toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </>
+                ))}
+                <div className="chat-content-item-content-empty">
+                  {pastedCodeData}
+                  {pastedCodeData ? CodeDisplay(pastedCodeData) : null}
+                  {InputComponent("bottom")}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
-      ) : (
+      </div>
+      {/* ) : (
         <div>加载中...</div>
-      )}
+      )} */}
     </div>
   );
 };
