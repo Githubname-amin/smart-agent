@@ -102,20 +102,29 @@ const openai = new OpenAI({
 //     console.error("Error sending message:", error);
 //   }
 // };
-export const sendMessageTest = async (currentMessage) => {
+export const sendMessageTest = async function* (currentMessage) {
   try {
     const response = await openai.chat.completions.create({
       model: "qwen-turbo",
       messages: [
         { role: "system", content: "You are a helpful assistant." },
         { role: "user", content: currentMessage }
-      ]
+      ],
+      stream: true
     });
     // console.log("response", response, JSON.stringify(response));
-    if (response && response?.id) {
-      return response.choices[0];
+    // if (response && response?.id) {
+    //   return response.choices[0];
+    // }
+    for await (const chunk of response) {
+    //   console.log(chunk.choices[0].delta.content);
+      if (chunk.choices[0].delta.content) {
+        // yield chunk.choices[0].delta.content;
+        yield chunk;
+      }
     }
   } catch (error) {
     console.error("Error sending message:", error);
+    throw error;
   }
 };

@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./index.less";
 import ReactMarkdown from "react-markdown";
-import { Button, message, Typography } from "antd";
+import { Button } from "antd";
 import TextArea from "antd/es/input/TextArea";
 import { CopyOutlined } from "@ant-design/icons";
-import { handleCopyMessage, detectIfCode } from "../../utils";
+import { handleCopyMessage, detectIfCode, detectLanguage } from "../../utils";
 import { sendMessageTest } from "../../server/model";
-const { Paragraph } = Typography;
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { CodeBuffer } from "../../utils/buffer";
 
 const Chat = () => {
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
@@ -14,6 +16,12 @@ const Chat = () => {
   const [inputValue, setInputValue] = useState("");
   // const [inputIsTop, setInputIsTop] = useState(false); //有对话记录的清空下，输入框是否置顶
   const [pastedCodeData, setPastedCodeData] = useState(""); // 粘贴的代码数据
+  const [isCollectingCode, setIsCollectingCode] = useState(false); // 是否正在收集代码
+  const [currentCodeBlock, setCurrentCodeBlock] = useState({
+    language: "javascript",
+    content: ""
+  }); // 当前收集的代码块，每次处理完后清除
+  const codeBuffer = useRef(new CodeBuffer());
 
   const handleOnPaste = (e) => {
     // 阻止默认的换行行为
@@ -64,19 +72,37 @@ const Chat = () => {
       message: [...prevData?.message, nowUserMessage]
     }));
 
+    // 创建助手的空消息
+    const assistantMessage = {
+      role: "assistant",
+      content: []
+    };
+    setCurrentData((prevData) => ({
+      ...prevData,
+      message: [...prevData.message, assistantMessage]
+    }));
+
     // 已经建立链接，已经录入问题，已经得到prompt，开始请求
     try {
       const response = await sendMessageTest(inputValue);
       console.log("response前端js", response);
-      if (response) {
-        const nowAssistantResponse = {
-          role: "assistant",
-          content: response.message.content
-        };
-        setCurrentData((prevData) => ({
-          ...prevData,
-          message: [...prevData?.message, nowAssistantResponse]
-        }));
+
+      // 用for await 来处理流式响应
+      // 使用buffer来处理流式响应
+      for await (const chunk of response) {
+        const content = chunk.choices[0].delta.content;
+        const result = codeBuffer.current.process(content);
+        console.log("result", result, content);
+        if (result) {
+          setCurrentData((prevData) => {
+            const newMessage = [...prevData.message];
+            const lastMessage = newMessage[newMessage.length - 1];
+            if (lastMessage.role === "assistant") {
+              lastMessage.content.push(result);
+            }
+            return { ...prevData, message: newMessage };
+          });
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -91,6 +117,34 @@ const Chat = () => {
 
     // 成功后判断是否存在上下文
     // setCurrentData(data);
+  };
+
+  // 处理渲染问题
+  const renderMessageContent = (content) => {
+    if (typeof content === "string") {
+      return (
+        <span className="chat-content-item-content-user-text-content">
+          {content}
+        </span>
+      );
+    }
+    return content.map((item, index) => {
+      if (item.type === "code") {
+        return (
+          <div key={`code-${index}`} className="code-block">
+            <div className="code-block-title">
+              <span>{item.language}</span>
+              <CopyOutlined />
+            </div>
+            <SyntaxHighlighter language={item.language} style={vscDarkPlus}>
+              {item.content}
+            </SyntaxHighlighter>
+          </div>
+        );
+      } else {
+        return <span key={`text-${index}`}>{item.content}</span>;
+      }
+    });
   };
 
   useEffect(() => {
@@ -147,32 +201,20 @@ const Chat = () => {
   };
 
   // 代码展示组件
-  const CodeDisplay = ({ code }) => (
-    <Paragraph
-      code={true}
-      className="code-display"
-      copyable
-      editable={false}
-      ellipsis={{
-        rows: 3,
-        expandable: true,
-        symbol: "展开",
-        onExpand: () => {}
-      }}
-      style={{
-        background: "#f5f5f5",
-        padding: "12px",
-        borderRadius: "4px",
-        fontFamily: "monospace",
-        whiteSpace: "pre-wrap",
-        userSelect: "text", // 允许选中
-        cursor: "default" // 默认光标
-      }}
-    >
-      {code}
-    </Paragraph>
-  );
-
+  const messageRender = (msgItem) => {
+    // 处理返回体中的代码片段
+    if (msgItem.role === "assistant") {
+      const codeBlock = msgItem.content.match(/```[\s\S]*```/g);
+      if (codeBlock) {
+        return codeBlock.map((code) => {
+          return (
+            <SyntaxHighlighter language="javascript">{code}</SyntaxHighlighter>
+          );
+        });
+      }
+    }
+    return msgItem.content;
+  };
   return (
     <div className="chat-box" style={{ margin: "10px" }}>
       {/* {currentData ? ( */}
@@ -184,9 +226,8 @@ const Chat = () => {
             ) : (
               <div className="chat-content-item-content">
                 {currentData?.message.map((item, index) => (
-                  <>
+                  <div key={index}>
                     <div
-                      key={index}
                       className={`inputContainer ${
                         item.role === "user" ? "user" : "assistant"
                       }`}
@@ -196,18 +237,22 @@ const Chat = () => {
                       </div>
                       <div className="chat-content-item-content-user-text">
                         <div className="chat-content-item-content-user-text-content">
-                          <ReactMarkdown>{item.content}</ReactMarkdown>
+                          {/* <ReactMarkdown>{messageRender(item)}</ReactMarkdown> */}
+                          {/* <ReactMarkdown>{item.content}</ReactMarkdown> */}
+                          {renderMessageContent(item.content)}
+                          <button onClick={() => console.log(item)}>
+                            点我
+                          </button>
                         </div>
                       </div>
                       <div className="chat-content-item-content-time">
                         {new Date().toLocaleTimeString()}
                       </div>
                     </div>
-                  </>
+                  </div>
                 ))}
                 <div className="chat-content-item-content-empty">
                   {pastedCodeData}
-                  {pastedCodeData ? CodeDisplay(pastedCodeData) : null}
                   {InputComponent("bottom")}
                 </div>
               </div>
