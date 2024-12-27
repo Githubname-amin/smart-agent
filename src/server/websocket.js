@@ -290,6 +290,12 @@ class WebSocketClient {
                   this.apiCallbackFns[response.url](this.ws, response);
                 }
                 break;
+              case "/chat/prompt":
+                // 服务端传递prompt给到前端
+                if (this.apiCallbackFns[response.url]) {
+                  this.apiCallbackFns[response.url](this.ws, response);
+                }
+                break;
               default:
                 console.log("未知的url", response.url);
                 break;

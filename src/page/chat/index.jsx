@@ -20,6 +20,7 @@ import {
 } from "../../server/websocket";
 
 const Chat = () => {
+  const [startPrompt, setStartPrompt] = useState({}); // 是否已经获取到prompt
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
   const [inputValue, setInputValue] = useState("");
@@ -85,6 +86,7 @@ const Chat = () => {
     }
   };
 
+  // 页面最初的webscoket连接相关
   // 关联websocket，与后端建立链接，然后开始对话
   const fetchData = async (nowWsStatus) => {
     // 建立websocket链接，检查当前webscoket链接状态
@@ -111,13 +113,14 @@ const Chat = () => {
         //
       }
 
-      // 开始对话,这里是首次加载，基于后端已经分析出prompt的前提下
-      // handleSendMessage(true);
+      // 开始对话,这里是首次加载，基于后端已经分析出prompt的前提下。先写入一些数据在页面上，为对话做准备
+      //TODO: 如果检查到后端有传递prompt，则需要录入到上下文信息中
+
+      // 检查当前上下文中是否包括了所有已有的traceId相关的代码
     }
   };
   // 和模型对话
-  const handleSendMessage = async (isFirst) => {
-    console.log("handleSendMessage", isFirst, isComposing, inputValue);
+  const handleSendMessage = async () => {
     if (isComposing) return;
     // 发送信息后or初次对话的时候触发当前请求
     setIsComposing(true);
@@ -180,6 +183,45 @@ const Chat = () => {
     // setCurrentData(data);
   };
 
+  // 这个方法最早执行，只执行一次。后续则是其他接口传递 prompt，然后修改那个数组
+  // 在链接后传递基础上下文
+  const handleRequestPrompt = (ws, request) => {
+    console.log("handleRequestPrompt前端页面", ws, request);
+    if (request.success) {
+      // 录入到上下文信息中
+      const startUserMessage = {
+        role: "user",
+        content: request?.data?.userPrompt
+      };
+      const startAssistantMessage = {
+        role: "assistant",
+        content: request?.data?.assistantPrompt
+      };
+      setStartPrompt([startUserMessage, startAssistantMessage]);
+      setCurrentCodeBlockList((prevData) => [
+        ...prevData,
+        { traceId: request?.traceId, code: request?.data?.code }
+      ]);
+    }
+  };
+
+  // 处理服务端传递代码的逻辑
+  const handleSelectCode = (ws, request) => {
+    console.log("handleSelectCode前端页面", ws, request);
+    // 获取到代码后，插入到输入框上层的代码展示区域
+    setCurrentCodeBlockList((prevData) => [
+      ...prevData,
+      { traceId: request.traceId, code: request.data.code }
+    ]);
+  };
+
+  // 前端传递一段代码给后端
+  const handleInsertCodeToEditor = (ws, request) => {
+    // console.log("handleInsertCodeToEditor前端页面", ws, request);
+  };
+
+  // --------------------------------------------------------
+  // 组件处理相关
   // 处理渲染问题
   const renderMessageContent = (content) => {
     if (typeof content === "string") {
@@ -210,20 +252,6 @@ const Chat = () => {
       }
     });
   };
-  // 处理服务端传递代码的逻辑
-  const handleSelectCode = (ws, request) => {
-    console.log("handleSelectCode前端页面", ws, request);
-    // 获取到代码后，插入到输入框上层的代码展示区域
-    setCurrentCodeBlockList((prevData) => [
-      ...prevData,
-      { traceId: request.traceId, code: request.data.code }
-    ]);
-  };
-
-  // 前端传递一段代码给后端
-  const handleInsertCodeToEditor = (ws, request) => {
-    // console.log("handleInsertCodeToEditor前端页面", ws, request);
-  };
 
   useEffect(() => {
     setIsPageLoading(true);
@@ -244,6 +272,7 @@ const Chat = () => {
     // 监听服务端传递代码的动作
     registerApiCallbackFn("/chat/selectCode", handleSelectCode);
     registerApiCallbackFn("/chat/insertCodeToEditor", handleInsertCodeToEditor);
+    registerApiCallbackFn("/chat/prompt", handleRequestPrompt);
     // fetchData();
     return () => {
       // 对话结束的时候，清空messages对话上下文
