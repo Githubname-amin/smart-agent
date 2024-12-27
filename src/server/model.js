@@ -1,7 +1,10 @@
 // 与大模型交互的接口定义处
 import OpenAI from "openai";
-const axios = require("axios");
 import { ALI_CONFIG } from "./config";
+const axios = require("axios");
+
+// 判断是否是IntelliJ环境
+const isIntelliJEnvironment = window.intellij !== undefined;
 
 const data = {
   traceId: "1234567890",
@@ -117,7 +120,7 @@ export const sendMessageTest = async function* (currentMessage) {
     //   return response.choices[0];
     // }
     for await (const chunk of response) {
-    //   console.log(chunk.choices[0].delta.content);
+      //   console.log(chunk.choices[0].delta.content);
       if (chunk.choices[0].delta.content) {
         // yield chunk.choices[0].delta.content;
         yield chunk;
@@ -126,5 +129,57 @@ export const sendMessageTest = async function* (currentMessage) {
   } catch (error) {
     console.error("Error sending message:", error);
     throw error;
+  }
+};
+
+// 设置对话上下文，初次的时候传入后端传入的prompt，否则自定义.|如果后续需要记录对话历史，则需要设定用户层面的traceId
+let messages = [];
+
+// 修改messages
+export const updateMessages = (currentMessages) => {
+  messages = [...messages, ...currentMessages];
+};
+// 对话结束或者新增对话的时候，需要清空messages
+export const clearMessages = () => {
+  messages = [];
+};
+
+// 获取messages
+export const getMessages = () => {
+  return messages;
+};
+
+export const initMessage = async (initMessages) => {
+  updateMessages(initMessages);
+
+  const data = {
+    model: "qwen-turbo",
+    input: {
+      messages: getMessages()
+    },
+    parameters: {
+      stream: true
+    }
+  };
+  if (isIntelliJEnvironment) {
+    // 在axios的post里面规范header和body
+    const response = await axios.post(
+      "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+      {
+        body: data,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + ALI_CONFIG.apiKey
+        }
+      }
+    );
+    console.log("response初始，在idea", response);
+  } else {
+    const response = await axios.post("http://localhost:3021/api/chat", data, {
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+    console.log("response11111,调试", response);
   }
 };

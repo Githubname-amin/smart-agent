@@ -1,14 +1,23 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./index.less";
 import ReactMarkdown from "react-markdown";
-import { Button } from "antd";
+import { Button, message } from "antd";
 import TextArea from "antd/es/input/TextArea";
-import { CopyOutlined } from "@ant-design/icons";
+import { CopyOutlined, CloseOutlined } from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode, detectLanguage } from "../../utils";
-import { sendMessageTest } from "../../server/model";
+import {
+  sendMessageTest,
+  initMessage,
+  clearMessages
+} from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { CodeBuffer } from "../../utils/buffer";
+import {
+  websocketClient,
+  WebSocketStatus,
+  registerApiCallbackFn
+} from "../../server/websocket";
 
 const Chat = () => {
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
@@ -21,8 +30,37 @@ const Chat = () => {
     language: "javascript",
     content: ""
   }); // 当前收集的代码块，每次处理完后清除
+  const [isPageLoading, setIsPageLoading] = useState(); // 页面是否正在加载
+
+  // 当前对话上下文收集统计到的代码块集合
+  const [currentCodeBlockList, setCurrentCodeBlockList] = useState([]);
+  const [currentSelectCode, setCurrentSelectCode] = useState({
+    traceId: "",
+    code: ""
+  }); //当前输入框内展示的代码块
+
   const codeBuffer = useRef(new CodeBuffer());
 
+  // --------------------------------------------------------
+  // 输入框相关的函数
+  // 删除当前代码对话上下文所需要的参数
+  const deleteCurrentSelectCode = (traceId) => {
+    setCurrentSelectCode((prevData) =>
+      prevData.filter((item) => item.traceId !== traceId)
+    );
+  };
+
+  // 切换当前查询代码的展示
+  const handleChangeSelectCodeShow = (item) => {
+    console.log("handleChangeSelectCodeShow", item);
+    if (item?.traceId === currentSelectCode?.traceId) {
+      setCurrentSelectCode(null);
+    } else {
+      setCurrentSelectCode(item);
+    }
+  };
+
+  // ------------------------------------------------
   const handleOnPaste = (e) => {
     // 阻止默认的换行行为
     e.preventDefault();
@@ -48,11 +86,34 @@ const Chat = () => {
   };
 
   // 关联websocket，与后端建立链接，然后开始对话
-  const fetchData = async () => {
-    // 建立websocket链接
-    // 建立成功，获取到当前的prompt和traceId
-    // 开始对话,这里是首次加载，基于后端已经分析出prompt的前提下
-    // handleSendMessage(true);
+  const fetchData = async (nowWsStatus) => {
+    // 建立websocket链接，检查当前webscoket链接状态
+    if (nowWsStatus === WebSocketStatus.OPEN) {
+      // 建立成功，获取到当前的prompt和traceId，用来建立上下文环境
+      if (true) {
+        // mock传过来的数据
+        // const assMessages = [
+        //   { role: "system", content: "You are a helpful assistant." },
+        //   { role: "user", content: "请用java实现一段两数只和，只需要输出代码" }
+        // ];
+        // initMessage(assMessages);
+
+        // 请求获取到prompt和traceId
+        // 最初这里的message并不确定是否要展示。
+        setCurrentData({
+          traceId: "123",
+          message: []
+        });
+        // 如果初次拉起来的时候需要展示代码
+        if (false) {
+          // 录入需要展示的代码块
+        }
+        //
+      }
+
+      // 开始对话,这里是首次加载，基于后端已经分析出prompt的前提下
+      // handleSendMessage(true);
+    }
   };
   // 和模型对话
   const handleSendMessage = async (isFirst) => {
@@ -134,7 +195,10 @@ const Chat = () => {
           <div key={`code-${index}`} className="code-block">
             <div className="code-block-title">
               <span>{item.language}</span>
-              <CopyOutlined />
+              <CopyOutlined
+                className="code-block-title-copy"
+                onClick={() => handleCopyMessage(item)}
+              />
             </div>
             <SyntaxHighlighter language={item.language} style={vscDarkPlus}>
               {item.content}
@@ -146,9 +210,47 @@ const Chat = () => {
       }
     });
   };
+  // 处理服务端传递代码的逻辑
+  const handleSelectCode = (ws, request) => {
+    console.log("handleSelectCode前端页面", ws, request);
+    // 获取到代码后，插入到输入框上层的代码展示区域
+    setCurrentCodeBlockList((prevData) => [
+      ...prevData,
+      { traceId: request.traceId, code: request.data.code }
+    ]);
+  };
+
+  // 前端传递一段代码给后端
+  const handleInsertCodeToEditor = (ws, request) => {
+    // console.log("handleInsertCodeToEditor前端页面", ws, request);
+  };
 
   useEffect(() => {
-    fetchData();
+    setIsPageLoading(true);
+    // 添加状态监听
+    const handleStatusChange = (status) => {
+      console.log("handleStatusChange11", status);
+      // 当 WebSocket 连接成功时才执行 fetchData
+      if (status === WebSocketStatus.OPEN) {
+        fetchData(status);
+        setIsPageLoading(false);
+      } else if (status === WebSocketStatus.ERROR) {
+        // 弹出弹窗
+        message.error("WebSocket 连接失败");
+        return;
+      }
+    };
+    websocketClient.onStatusChange(handleStatusChange);
+    // 监听服务端传递代码的动作
+    registerApiCallbackFn("/chat/selectCode", handleSelectCode);
+    registerApiCallbackFn("/chat/insertCodeToEditor", handleInsertCodeToEditor);
+    // fetchData();
+    return () => {
+      // 对话结束的时候，清空messages对话上下文
+      clearMessages();
+      // 移除状态监听
+      websocketClient.removeStatusChange(handleStatusChange);
+    };
   }, []);
 
   //   顶部输入框组件
@@ -161,13 +263,58 @@ const Chat = () => {
         }`}
       >
         <div className="chat-input-component-title">
-          当前文件跟踪码：{currentData?.traceId}
-          <span
-            style={{ cursor: "pointer", marginLeft: "5px" }}
-            onClick={() => handleCopyMessage(currentData)}
-          >
-            <CopyOutlined />
+          <span className="chat-input-component-title-text">
+            当前文件跟踪码：{currentSelectCode?.traceId}
+            {currentSelectCode?.traceId && (
+              <CopyOutlined
+                onClick={() => {
+                  handleCopyMessage(currentSelectCode?.traceId);
+                }}
+              />
+            )}
           </span>
+          <div className="chat-input-component-title-traceId-box">
+            {currentCodeBlockList.length > 0 &&
+              currentCodeBlockList.map((item, index) => {
+                return (
+                  <div
+                    className={`chat-input-component-title-traceId ${
+                      currentSelectCode?.traceId === item?.traceId
+                        ? "chat-input-component-title-traceId-active"
+                        : ""
+                    }`}
+                    // key={item?.traceId}
+                    key={index}
+                  >
+                    <span
+                      onClick={() => {
+                        handleChangeSelectCodeShow(item);
+                      }}
+                    >
+                      {item?.traceId}
+                    </span>
+                    <span
+                      style={{ cursor: "pointer", marginLeft: "5px" }}
+                      onClick={() => {
+                        deleteCurrentSelectCode(item?.traceId);
+                      }}
+                    >
+                      <CloseOutlined />
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+        <div>
+          {/* 展示当前选中任务的代码 */}
+          {currentSelectCode && currentSelectCode?.code && (
+            <div className="chat-input-component-title-traceId-code">
+              <SyntaxHighlighter language={"java"} style={vscDarkPlus}>
+                {currentSelectCode?.code}
+              </SyntaxHighlighter>
+            </div>
+          )}
         </div>
         <TextArea
           autoSize={{ minRows: isTop ? 3 : 2, maxRows: 6 }}
@@ -217,52 +364,54 @@ const Chat = () => {
   };
   return (
     <div className="chat-box" style={{ margin: "10px" }}>
-      {/* {currentData ? ( */}
-      <div className="chat-container">
-        <div className="chat-content">
-          <div className="chat-content-item">
-            {!currentData?.message?.length ? (
-              <div>{InputComponent("top")}</div>
-            ) : (
-              <div className="chat-content-item-content">
-                {currentData?.message.map((item, index) => (
-                  <div key={index}>
-                    <div
-                      className={`inputContainer ${
-                        item.role === "user" ? "user" : "assistant"
-                      }`}
-                    >
-                      <div className="chat-content-item-content-user-text-copy">
-                        <CopyOutlined onClick={() => handleCopyMessage(item)} />
-                      </div>
-                      <div className="chat-content-item-content-user-text">
-                        <div className="chat-content-item-content-user-text-content">
-                          {/* <ReactMarkdown>{messageRender(item)}</ReactMarkdown> */}
-                          {/* <ReactMarkdown>{item.content}</ReactMarkdown> */}
-                          {renderMessageContent(item.content)}
-                          <button onClick={() => console.log(item)}>
+      {isPageLoading ? (
+        <div>加载中...</div>
+      ) : (
+        <div className="chat-container">
+          <div className="chat-content">
+            <div className="chat-content-item">
+              {!currentData?.message?.length ? (
+                <div>{InputComponent("top")}</div>
+              ) : (
+                <div className="chat-content-item-content">
+                  {currentData?.message.map((item, index) => (
+                    <div key={index}>
+                      <div
+                        className={`inputContainer ${
+                          item.role === "user" ? "user" : "assistant"
+                        }`}
+                      >
+                        <div className="chat-content-item-content-user-text-copy">
+                          <CopyOutlined
+                            onClick={() => handleCopyMessage(item)}
+                          />
+                        </div>
+                        <div className="chat-content-item-content-user-text">
+                          <div className="chat-content-item-content-user-text-content">
+                            {/* <ReactMarkdown>{messageRender(item)}</ReactMarkdown> */}
+                            {/* <ReactMarkdown>{item.content}</ReactMarkdown> */}
+                            {renderMessageContent(item.content)}
+                            {/* <button onClick={() => console.log(item)}>
                             点我
-                          </button>
+                          </button> */}
+                          </div>
+                        </div>
+                        <div className="chat-content-item-content-time">
+                          {new Date().toLocaleTimeString()}
                         </div>
                       </div>
-                      <div className="chat-content-item-content-time">
-                        {new Date().toLocaleTimeString()}
-                      </div>
                     </div>
+                  ))}
+                  <div className="chat-content-item-content-empty">
+                    {pastedCodeData}
+                    {InputComponent("bottom")}
                   </div>
-                ))}
-                <div className="chat-content-item-content-empty">
-                  {pastedCodeData}
-                  {InputComponent("bottom")}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
-      {/* ) : (
-        <div>加载中...</div>
-      )} */}
+      )}
     </div>
   );
 };

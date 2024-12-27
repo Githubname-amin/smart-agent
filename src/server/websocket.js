@@ -5,9 +5,9 @@
 // import { ErrorScenes } from './common/LogUtil';
 // import { error } from './common/LogUtil';
 
-// function getUrlParams(url: string): Map<string, string> {
+// function getUrlParams(url){
 //   const searchParams = new URLSearchParams(url);
-//   const params = new Map<string, string>();
+//   const params = new Map();
 //   for (const [key, value] of searchParams) {
 //     params.set(key, value);
 //   }
@@ -227,3 +227,179 @@
 //     request,
 //   };
 // }
+
+// import createReactConnector, {WebSocketResponse } from '@/components/ChatGpt/socketConnector';
+
+// const { request,useConnector } = createReactConnector(
+//   new Map<string,(data:any)=>WebSocketResponse>(),
+// );
+
+// export const socketListener = useConnector;
+// export const websocketClient = request;
+
+export const WebSocketStatus = {
+  CONNECTING: "CONNECTING",
+  OPEN: "OPEN",
+  CLOSING: "CLOSING",
+  CLOSED: "CLOSED",
+  ERROR: "ERROR"
+};
+
+class WebSocketClient {
+  constructor(url = "ws://localhost:3020") {
+    this.url = url;
+    this.ws = null;
+    this.messageQueue = [];
+    // 用字段记录当前webscoket的状态，用来页面交互
+    this.wsState = "";
+    this.connect();
+    // 记录监听行为
+    this.statusChangeCallbacks = [];
+    // 记录接口处理函数
+    this.apiCallbackFns = {};
+  }
+
+  connect() {
+    this.ws = new WebSocket(this.url);
+
+    this.ws.onopen = () => {
+      console.log("WebSocket 连接成功");
+      this.updateStatus(WebSocketStatus.OPEN);
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        if (response.success && response?.traceId) {
+          console.log("websocket收到消息", response);
+          this.updateStatus(WebSocketStatus.OPEN);
+          // 判断服务端传递什么信息
+          // 是否是接口
+          if (typeof response.url === "string") {
+            // 是接口
+            switch (response.url) {
+              case "/chat/selectCode":
+                // 服务端传递某些代码给到前端
+                if (this.apiCallbackFns[response.url]) {
+                  this.apiCallbackFns[response.url](this.ws, response);
+                }
+                break;
+              case "/chat/insertCodeToEditor":
+                // 服务端传递某些代码给到前端
+                if (this.apiCallbackFns[response.url]) {
+                  this.apiCallbackFns[response.url](this.ws, response);
+                }
+                break;
+              default:
+                console.log("未知的url", response.url);
+                break;
+            }
+          }
+        }
+      } catch (error) {
+        console.error("解析消息失败", error);
+      }
+    };
+
+    this.ws.onerror = (error) => {
+      console.error("WebSocket 连接错误", error);
+      this.updateStatus(WebSocketStatus.ERROR);
+    };
+
+    this.ws.onclose = () => {
+      console.log("WebSocket 连接关闭");
+      this.updateStatus(WebSocketStatus.CLOSED);
+    };
+  }
+
+  /** 监听状态变化 */
+  onStatusChange(callback) {
+    this.statusChangeCallbacks.push(callback);
+  }
+
+  // 移除监听
+  removeStatusChange(callback) {
+    this.statusChangeCallbacks = this.statusChangeCallbacks.filter(
+      (cb) => cb !== callback
+    );
+  }
+
+  /** 触发状态变化 */
+  updateStatus(newStatus) {
+    this.wsState = newStatus;
+    this.statusChangeCallbacks.forEach((callback) => callback(newStatus));
+  }
+
+  /** 发送消息 */
+  async sendMessage(url, request) {
+    return new Promise((resolve, reject) => {
+      // 检查是否链接websocket
+      if (!this.ws || this.ws.readyState !== WebSocketStatus.OPEN) {
+        reject(new Error("WebSocket 未连接"));
+        return;
+      }
+      const traceId = generateTraceId();
+      const message = {
+        url,
+        request,
+        traceId
+      };
+      this.ws.send(JSON.stringify(message));
+    });
+  }
+
+  //---------------------------------------------
+}
+
+/**
+ * 生成traceId
+ */
+function generateTraceId() {
+  let timestamp = new Date().getTime();
+  let random = Math.floor(Math.random() * 1000000);
+  return `trace_${timestamp}_${random}`;
+}
+
+export const websocketClient = new WebSocketClient();
+// 检查连接状态
+
+/** 获取想要查询的代码，作为上下文 */
+export async function getSelectCode(url = "/chat/selectCode") {
+  const request = {
+    traceId: "123",
+    message: []
+  };
+  try {
+    const response = await websocketClient.sendMessage(url, request);
+    console.log("前端获取到代码", response);
+    return response;
+  } catch (error) {
+    console.error("获取代码失败", error);
+  }
+}
+
+/** 前端申请插入代码到编辑器 */
+export async function insertCodeToEditor(url = "/chat/insertCodeToEditor") {
+  const request = {
+    success: true,
+    traceId: "1234",
+    data: {
+      code: `java
+    public class Main {
+        public static void main(String[] args) {
+            int a = 5;
+            int b = 10;
+            System.out.println("两数之和为: " + (a + b));
+        }
+    }`,
+      message: "处理选择代码逻辑,服务端传递代码来前端"
+    }
+  };
+  const response = await websocketClient.sendMessage(url, request);
+  console.log("前端插入代码到编辑器", response);
+  return response;
+}
+// 接口处理函数
+export function registerApiCallbackFn(url, callback) {
+  websocketClient.apiCallbackFns[url] = callback;
+}
