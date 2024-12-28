@@ -8,7 +8,9 @@ import { handleCopyMessage, detectIfCode, detectLanguage } from "../../utils";
 import {
   sendMessageTest,
   initMessage,
-  clearMessages
+  clearMessages,
+  nowUserActionMessageClient,
+  sendHTTPChat
 } from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -20,7 +22,7 @@ import {
 } from "../../server/websocket";
 
 const Chat = () => {
-  const [startPrompt, setStartPrompt] = useState({}); // 是否已经获取到prompt
+  const [startPrompt, setStartPrompt] = useState([]); // 是否已经获取到prompt
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
   const [inputValue, setInputValue] = useState("");
@@ -124,7 +126,6 @@ const Chat = () => {
     if (isComposing) return;
     // 发送信息后or初次对话的时候触发当前请求
     setIsComposing(true);
-    // setInputIsTop(true);
 
     // 前端校验结束，那么录入信息
     const nowUserMessage = {
@@ -148,7 +149,8 @@ const Chat = () => {
 
     // 已经建立链接，已经录入问题，已经得到prompt，开始请求
     try {
-      const response = await sendMessageTest(inputValue);
+      // const response = await sendMessageTest(inputValue);
+      const response = await sendHTTPChat(inputValue);
       console.log("response前端js", response);
 
       // 用for await 来处理流式响应
@@ -194,10 +196,14 @@ const Chat = () => {
         content: request?.data?.userPrompt
       };
       const startAssistantMessage = {
-        role: "assistant",
-        content: request?.data?.assistantPrompt
+        role: "system",
+        content: request?.data?.systemPrompt || "You are a helpful assistant."
       };
-      setStartPrompt([startUserMessage, startAssistantMessage]);
+      // 初始化上下文
+      nowUserActionMessageClient.initMessages(
+        [startAssistantMessage, startUserMessage],
+        request?.traceId
+      );
       setCurrentCodeBlockList((prevData) => [
         ...prevData,
         { traceId: request?.traceId, code: request?.data?.code }
@@ -270,9 +276,9 @@ const Chat = () => {
     };
     websocketClient.onStatusChange(handleStatusChange);
     // 监听服务端传递代码的动作
+    registerApiCallbackFn("/chat/prompt", handleRequestPrompt);
     registerApiCallbackFn("/chat/selectCode", handleSelectCode);
     registerApiCallbackFn("/chat/insertCodeToEditor", handleInsertCodeToEditor);
-    registerApiCallbackFn("/chat/prompt", handleRequestPrompt);
     // fetchData();
     return () => {
       // 对话结束的时候，清空messages对话上下文

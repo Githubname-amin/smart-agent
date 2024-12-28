@@ -5,77 +5,6 @@ const axios = require("axios");
 
 // 判断是否是IntelliJ环境
 const isIntelliJEnvironment = window.intellij !== undefined;
-
-const data = {
-  traceId: "1234567890",
-  message: [
-    {
-      role: "user",
-      content: "你好，我是小明，我有一个问题需要你帮我解决。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "好的，谢谢你。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "你好，我是小明，我有一个问题需要你帮我解决。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "好的，谢谢你。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "你好，我是小明，我有一个问题需要你帮我解决。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "好的，谢谢你。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "你好，我是小明，我有一个问题需要你帮我解决。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    },
-    {
-      role: "user",
-      content: "好的，谢谢你。"
-    },
-    {
-      role: "assistant",
-      content: "好的，我会帮你解决这个问题。"
-    }
-  ]
-};
-
 const openai = new OpenAI({
   // 若没有配置环境变量，请用百炼API Key将下行替换为：apiKey: "sk-xxx",
   apiKey: ALI_CONFIG.apiKey,
@@ -105,14 +34,161 @@ const openai = new OpenAI({
 //     console.error("Error sending message:", error);
 //   }
 // };
+
+class nowUserActionMessages {
+  constructor(userTraceId) {
+    this.userTraceId = userTraceId; // 用户traceId，用来记录消息历史
+    this.traceId = []; // 当前用户操作的traceId，仅用来记录上下文历史，在对话的时候没有什么意义
+    this.messages = []; // 当前用户操作的消息，记录所有的对话记录，后续上传
+  }
+
+  // 添加消息
+  addMessage(message) {
+    this.messages.push(message);
+  }
+
+  // 清空消息
+  clearMessages() {
+    this.messages = [];
+  }
+
+  // 获取消息
+  getMessages() {
+    return this.messages;
+  }
+
+  // 修改信息
+  updateMessages(messages) {}
+
+  // 增加当前对话涉及到上下文 traceId
+  addTraceId(traceId) {
+    this.traceId.push(traceId);
+  }
+
+  // 获取当前对话涉及到上下文 traceId
+  getTraceId() {
+    return this.traceId;
+  }
+
+  // 清空当前对话涉及到上下文 traceId
+  clearTraceId() {
+    this.traceId = [];
+  }
+
+  // 修改当前对话涉及到上下文 traceId
+  updateTraceId(traceId) {}
+
+  // 初始化对象程序，写入一些背景 prompt
+  initMessages(currentMessages, traceId) {
+    this.messages = [...this.messages, ...currentMessages];
+    this.traceId = [...this.traceId, ...traceId];
+  }
+}
+
+// -------------------------------
+// 使用上面的类
+
+export let nowUserActionMessageClient = new nowUserActionMessages("1234");
+
+// 尝试改造成nodejs的流式响应,但是发现要根据他的字段参数去调整整体逻辑.所有返回确定请求方式
+export const sendHTTPChat = async function* (currentMessage) {
+  console.log("sendHTTPChat", currentMessage);
+  nowUserActionMessageClient.addMessage({
+    role: "user",
+    content: currentMessage
+  });
+  try {
+    const data = {
+      model: "qwen-turbo",
+      input: {
+        messages: [...nowUserActionMessageClient.getMessages()]
+      },
+      parameters: {
+        stream: true,
+        incremental_output: true
+      }
+    };
+    console.log("data???", data);
+    debugger;
+    let response;
+    if (isIntelliJEnvironment) {
+      response = await axios.post(
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+        data,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-DashScope-SSE": "enable",
+            Authorization: "Bearer " + ALI_CONFIG.apiKey
+          }
+        }
+      );
+      console.log("response，在idea", response);
+    } else {
+      response = await fetch("http://localhost:3021/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+      });
+      console.log("response，在本地", response);
+      if (!response && response?.status !== 200) {
+        throw new Error("请求失败");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          console.log("Stream chunk received:", !!value, done); // 调试日志
+
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+
+          // 保留最后一个可能不完整的行
+          buffer = lines.pop() || "";
+          console.log("lines", lines);
+          for (const line of lines) {
+            console.log("line11", line);
+            if (line.trim() && line.startsWith("data:")) {
+              try {
+                const jsonStr = line.replace(/^data:\s*/, "").trim();
+                if (jsonStr) {
+                  const parsedData = JSON.parse(jsonStr);
+                  console.log("Parsed data:", parsedData); // 调试日志
+                  yield parsedData;
+                }
+              } catch (e) {
+                console.warn("Failed to parse line:", line, e);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+  } catch (error) {
+    console.error("Error sending message:", error);
+    throw error;
+  }
+};
+
 export const sendMessageTest = async function* (currentMessage) {
+  nowUserActionMessageClient.addMessage({
+    role: "user",
+    content: currentMessage
+  });
   try {
     const response = await openai.chat.completions.create({
       model: "qwen-turbo",
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: currentMessage }
-      ],
+      messages: [...nowUserActionMessageClient.getMessages()],
       stream: true
     });
     // console.log("response", response, JSON.stringify(response));
