@@ -6,10 +6,10 @@ import TextArea from "antd/es/input/TextArea";
 import { CopyOutlined, CloseOutlined } from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode, detectLanguage } from "../../utils";
 import {
-  sendMessageTest,
-  initMessage,
-  clearMessages,
-  nowUserActionMessageClient,
+  sendChatDataTest,
+  initChatData,
+  clearChatDatas,
+  nowUserActionDataClient,
   sendHTTPChat
 } from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -33,7 +33,7 @@ const Chat = () => {
     language: "javascript",
     content: ""
   }); // 当前收集的代码块，每次处理完后清除
-  const [isPageLoading, setIsPageLoading] = useState(); // 页面是否正在加载
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false); // 是否正在加载 prompt 上下文，适用于最初加载和后续添加新代码快
 
   // 当前对话上下文收集统计到的代码块集合
   const [currentCodeBlockList, setCurrentCodeBlockList] = useState([]);
@@ -88,39 +88,40 @@ const Chat = () => {
     }
   };
 
+  //--------------------------------------------------
   // 页面最初的webscoket连接相关
-  // 关联websocket，与后端建立链接，然后开始对话
-  const fetchData = async (nowWsStatus) => {
-    // 建立websocket链接，检查当前webscoket链接状态
-    if (nowWsStatus === WebSocketStatus.OPEN) {
-      // 建立成功，获取到当前的prompt和traceId，用来建立上下文环境
-      if (true) {
-        // mock传过来的数据
-        // const assMessages = [
-        //   { role: "system", content: "You are a helpful assistant." },
-        //   { role: "user", content: "请用java实现一段两数只和，只需要输出代码" }
-        // ];
-        // initMessage(assMessages);
 
-        // 请求获取到prompt和traceId
-        // 最初这里的message并不确定是否要展示。
-        setCurrentData({
-          traceId: "123",
-          message: []
-        });
-        // 如果初次拉起来的时候需要展示代码
-        if (false) {
-          // 录入需要展示的代码块
-        }
-        //
-      }
+  // 这个方法最早执行，只执行一次。后续则是其他接口传递 prompt，然后修改那个数组
+  // 在链接后传递基础上下文，一般最初为超级长的上下文描述
+  const handleRequestPrompt = (ws, request) => {
+    console.log("handleRequestPrompt前端页面", ws, request);
+    setIsLoadingPrompt(true);
+    if (request.success) {
+      // 判断传递过来的信息是怎样的？超长字符串？还是代码块？
+      // 需要统一处理的函数(用来处理返回报文,然后将其写入到自定义的类中)
 
-      // 开始对话,这里是首次加载，基于后端已经分析出prompt的前提下。先写入一些数据在页面上，为对话做准备
-      //TODO: 如果检查到后端有传递prompt，则需要录入到上下文信息中
-
-      // 检查当前上下文中是否包括了所有已有的traceId相关的代码
+      // 录入到上下文信息中
+      const startUserChatData = {
+        role: "user",
+        content: request?.data?.userPrompt
+      };
+      const startAssistantChatData = {
+        role: "system",
+        content: request?.data?.systemPrompt || "You are a helpful assistant."
+      };
+      // 初始化上下文
+      nowUserActionDataClient.initChatDatas(
+        [startAssistantChatData, startUserChatData],
+        request?.traceId
+      );
+      setCurrentCodeBlockList((prevData) => [
+        ...prevData,
+        { traceId: request?.traceId, code: request?.data?.code }
+      ]);
+      setIsLoadingPrompt(false);
     }
   };
+
   // 和模型对话
   const handleSendMessage = async () => {
     if (isComposing) return;
@@ -185,32 +186,6 @@ const Chat = () => {
     // setCurrentData(data);
   };
 
-  // 这个方法最早执行，只执行一次。后续则是其他接口传递 prompt，然后修改那个数组
-  // 在链接后传递基础上下文
-  const handleRequestPrompt = (ws, request) => {
-    console.log("handleRequestPrompt前端页面", ws, request);
-    if (request.success) {
-      // 录入到上下文信息中
-      const startUserMessage = {
-        role: "user",
-        content: request?.data?.userPrompt
-      };
-      const startAssistantMessage = {
-        role: "system",
-        content: request?.data?.systemPrompt || "You are a helpful assistant."
-      };
-      // 初始化上下文
-      nowUserActionMessageClient.initMessages(
-        [startAssistantMessage, startUserMessage],
-        request?.traceId
-      );
-      setCurrentCodeBlockList((prevData) => [
-        ...prevData,
-        { traceId: request?.traceId, code: request?.data?.code }
-      ]);
-    }
-  };
-
   // 处理服务端传递代码的逻辑
   const handleSelectCode = (ws, request) => {
     console.log("handleSelectCode前端页面", ws, request);
@@ -260,15 +235,16 @@ const Chat = () => {
   };
 
   useEffect(() => {
-    setIsPageLoading(true);
-    console.log("pluginParams", pluginParams, window.location);
-    // 添加状态监听
+    // 监听服务端传递代码的动作
+    registerApiCallbackFn("/chat/prompt", handleRequestPrompt);
+    registerApiCallbackFn("/chat/selectCode", handleSelectCode);
+    registerApiCallbackFn("/chat/insertCodeToEditor", handleInsertCodeToEditor);
+
+    // 添加状态监听，所有状态变更都会走这个函数
     const handleStatusChange = (status) => {
       console.log("handleStatusChange11", status);
       // 当 WebSocket 连接成功时才执行 fetchData
       if (status === WebSocketStatus.OPEN) {
-        fetchData(status);
-        setIsPageLoading(false);
       } else if (status === WebSocketStatus.ERROR) {
         // 弹出弹窗
         message.error("WebSocket 连接失败");
@@ -276,14 +252,11 @@ const Chat = () => {
       }
     };
     websocketClient.onStatusChange(handleStatusChange);
-    // 监听服务端传递代码的动作
-    registerApiCallbackFn("/chat/prompt", handleRequestPrompt);
-    registerApiCallbackFn("/chat/selectCode", handleSelectCode);
-    registerApiCallbackFn("/chat/insertCodeToEditor", handleInsertCodeToEditor);
-    // fetchData();
+    websocketClient.init();
+
     return () => {
       // 对话结束的时候，清空messages对话上下文
-      clearMessages();
+      clearChatDatas();
       // 移除状态监听
       websocketClient.removeStatusChange(handleStatusChange);
     };
@@ -300,7 +273,11 @@ const Chat = () => {
       >
         <div className="chat-input-component-title">
           <span className="chat-input-component-title-text">
-            当前文件跟踪码：{currentSelectCode?.traceId}
+            <span>
+              + Add Context
+              {isLoadingPrompt ? "加载中..." : ""}
+            </span>
+
             {currentSelectCode?.traceId && (
               <CopyOutlined
                 onClick={() => {
@@ -400,7 +377,7 @@ const Chat = () => {
   };
   return (
     <div className="chat-box" style={{ margin: "10px" }}>
-      <div
+      {/* <div
         onClick={() => {
           websocketClient.onClose();
         }}
@@ -413,8 +390,8 @@ const Chat = () => {
         }}
       >
         重连按钮
-      </div>
-      {isPageLoading ? (
+      </div> */}
+      {false ? (
         <div>加载中...</div>
       ) : (
         <div className="chat-container">

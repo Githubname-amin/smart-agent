@@ -35,30 +35,30 @@ const openai = new OpenAI({
 //   }
 // };
 
-class nowUserActionMessages {
+class nowUserActionDatas {
   constructor(userTraceId) {
     this.userTraceId = userTraceId; // 用户traceId，用来记录消息历史
     this.traceId = []; // 当前用户操作的traceId，仅用来记录上下文历史，在对话的时候没有什么意义
-    this.messages = []; // 当前用户操作的消息，记录所有的对话记录，后续上传
+    this.chatDatas = []; // 当前用户操作的消息，记录所有的对话记录，后续上传
   }
 
   // 添加消息
-  addMessage(message) {
-    this.messages.push(message);
+  addChatData(chatData) {
+    this.chatDatas.push(chatData);
   }
 
   // 清空消息
-  clearMessages() {
-    this.messages = [];
+  clearChatDatas() {
+    this.chatDatas = [];
   }
 
   // 获取消息
-  getMessages() {
-    return this.messages;
+  getChatDatas() {
+    return this.chatDatas;
   }
 
   // 修改信息
-  updateMessages(messages) {}
+  updateChatDatas(chatDatas) {}
 
   // 增加当前对话涉及到上下文 traceId
   addTraceId(traceId) {
@@ -79,8 +79,8 @@ class nowUserActionMessages {
   updateTraceId(traceId) {}
 
   // 初始化对象程序，写入一些背景 prompt
-  initMessages(currentMessages, traceId) {
-    this.messages = [...this.messages, ...currentMessages];
+  initChatDatas(currentChatDatas, traceId) {
+    this.chatDatas = [...this.chatDatas, ...currentChatDatas];
     this.traceId = [...this.traceId, ...traceId];
   }
 }
@@ -88,20 +88,20 @@ class nowUserActionMessages {
 // -------------------------------
 // 使用上面的类
 
-export let nowUserActionMessageClient = new nowUserActionMessages("1234");
+export let nowUserActionDataClient = new nowUserActionDatas("1234");
 
 // 尝试改造成nodejs的流式响应,但是发现要根据他的字段参数去调整整体逻辑.所有返回确定请求方式
-export const sendHTTPChat = async function* (currentMessage) {
-  console.log("sendHTTPChat", currentMessage);
-  nowUserActionMessageClient.addMessage({
+export const sendHTTPChat = async function* (currentChatData) {
+  console.log("sendHTTPChat", currentChatData);
+  nowUserActionDataClient.addChatData({
     role: "user",
-    content: currentMessage
+    content: currentChatData
   });
   try {
     const data = {
       model: "qwen-turbo",
       input: {
-        messages: [...nowUserActionMessageClient.getMessages()]
+        messages: [...nowUserActionDataClient.getChatDatas()]
       },
       parameters: {
         stream: true,
@@ -180,15 +180,15 @@ export const sendHTTPChat = async function* (currentMessage) {
   }
 };
 
-export const sendMessageTest = async function* (currentMessage) {
-  nowUserActionMessageClient.addMessage({
+export const sendChatDataTest = async function* (currentChatData) {
+  nowUserActionDataClient.addChatData({
     role: "user",
-    content: currentMessage
+    content: currentChatData
   });
   try {
     const response = await openai.chat.completions.create({
       model: "qwen-turbo",
-      messages: [...nowUserActionMessageClient.getMessages()],
+      messages: [...nowUserActionDataClient.getChatDatas()],
       stream: true
     });
     // console.log("response", response, JSON.stringify(response));
@@ -209,29 +209,29 @@ export const sendMessageTest = async function* (currentMessage) {
 };
 
 // 设置对话上下文，初次的时候传入后端传入的prompt，否则自定义.|如果后续需要记录对话历史，则需要设定用户层面的traceId
-let messages = [];
+let chatDatas = [];
 
 // 修改messages
-export const updateMessages = (currentMessages) => {
-  messages = [...messages, ...currentMessages];
+export const updateChatDatas = (currentChatDatas) => {
+  chatDatas = [...chatDatas, ...currentChatDatas];
 };
 // 对话结束或者新增对话的时候，需要清空messages
-export const clearMessages = () => {
-  messages = [];
+export const clearChatDatas = () => {
+  chatDatas = [];
 };
 
 // 获取messages
-export const getMessages = () => {
-  return messages;
+export const getChatDatas = () => {
+  return chatDatas;
 };
 
-export const initMessage = async (initMessages) => {
-  updateMessages(initMessages);
+export const initChatData = async (initChatDatas) => {
+  updateChatDatas(initChatDatas);
 
   const data = {
     model: "qwen-turbo",
     input: {
-      messages: getMessages()
+      messages: getChatDatas()
     },
     parameters: {
       stream: true

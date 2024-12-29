@@ -50,17 +50,20 @@ class WebSocketClient {
     this.statusChangeCallbacks = [];
     // 记录接口处理函数
     this.apiCallbackFns = {};
-    this.connect();
+    // this.connect();
   }
 
+  // 初始化整个对象
   connect() {
     this.ws = new ReconnectingWebSocket(this.url, [], options);
 
     this.ws.addEventListener("open", () => {
       this.onOpen();
+      this.updateStatus(WebSocketStatus.OPEN);
     });
 
     this.ws.addEventListener("message", (event) => {
+      console.log("WebSocket 收到消息111", event);
       this.onMessage(event);
     });
 
@@ -69,7 +72,7 @@ class WebSocketClient {
     });
 
     this.ws.addEventListener("close", (event) => {
-      console.log("WebSocket 连接关闭", event);
+      // console.log("WebSocket 连接关闭", event);
     });
 
     // 监听重连事件
@@ -95,38 +98,37 @@ class WebSocketClient {
     try {
       const response = JSON.parse(event.data);
       if (response.success && response?.traceId) {
-        console.log("websocket收到消息", response);
         // 判断服务端传递什么信息
-        // 是否是接口
-        if (typeof response.url === "string") {
-          // 是接口
-          switch (response.url) {
-            case "/chat/selectCode":
-              // 服务端传递某些代码给到前端
-              if (this.apiCallbackFns[response.url]) {
-                this.apiCallbackFns[response.url](this.ws, response);
-              }
-              break;
-            case "/chat/insertCodeToEditor":
-              // 服务端传递某些代码给到前端
-              if (this.apiCallbackFns[response.url]) {
-                this.apiCallbackFns[response.url](this.ws, response);
-              }
-              break;
-            case "/chat/prompt":
-              // 服务端传递prompt给到前端
-              if (this.apiCallbackFns[response.url]) {
-                this.apiCallbackFns[response.url](this.ws, response);
-              }
-              break;
-            default:
-              console.log("未知的url", response.url);
-              break;
-          }
+        // 是否是已有接口
+        if (
+          typeof response.url === "string" &&
+          this.apiCallbackFns[response.url]
+        ) {
+          this.apiCallbackFns[response.url](this.ws, response);
+        } else {
+          console.error("未知的url", response.url);
+          this.ws.send({
+            traceId: response.traceId,
+            success: false,
+            errorMsg: `${response.url} 未定义`
+          });
+          return;
         }
+
+        // 分析完服务端传递过来的数据后，需要返回报文给服务端
+        this.ws.send({
+          traceId: response.traceId,
+          success: response?.success ?? true,
+          data: response?.data ?? null
+        });
       }
     } catch (error) {
       console.error("解析消息失败", error);
+      this.ws.send({
+        // traceId: this.ws.traceId,
+        success: false,
+        errorMsg: error.message
+      });
     }
   }
 
@@ -209,6 +211,20 @@ class WebSocketClient {
       }
     });
   }
+
+  /**初始化整个webscoket */
+  async init() {
+    try {
+      if (Object.keys(this.apiCallbackFns).length === 0) {
+        throw new Error("未注册任何接口");
+      }
+      await this.connect();
+      return true;
+    } catch (error) {
+      console.error("WebSocket 初始化失败", error);
+      throw error;
+    }
+  }
 }
 //---------------------------------------------
 /**
@@ -259,7 +275,8 @@ export async function insertCodeToEditor(url = "/chat/insertCodeToEditor") {
   console.log("前端插入代码到编辑器", response);
   return response;
 }
-// 接口处理函数
+
+// 接口处理函数，在页面之初注册对应的执行事件
 export function registerApiCallbackFn(url, callback) {
   websocketClient.apiCallbackFns[url] = callback;
 }
