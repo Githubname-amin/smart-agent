@@ -36,10 +36,7 @@ const options = {
 
 class WebSocketClient {
   constructor(
-    // url = pluginParams.get(
-    //   `127.0.0.1:${pluginParams.get("port")}?clientId=CHAT`
-    // )
-    url = "ws://127.0.0.1:3020"
+    url = `ws://127.0.0.1:${pluginParams.get("port")}?clientId=CHAT`
   ) {
     this.url = url;
     this.ws = null;
