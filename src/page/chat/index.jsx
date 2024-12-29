@@ -236,9 +236,9 @@ const Chat = () => {
 
   useEffect(() => {
     // 监听服务端传递代码的动作
-    registerApiCallbackFn("/chat/prompt", handleRequestPrompt);
-    registerApiCallbackFn("/chat/selectCode", handleSelectCode);
-    registerApiCallbackFn("/chat/insertCodeToEditor", handleInsertCodeToEditor);
+    registerApiCallbackFn("chat/prompt", handleRequestPrompt);
+    registerApiCallbackFn("chat/select_code", handleSelectCode);
+    registerApiCallbackFn("chat/insert_code_to_input", handleInsertCodeToEditor);
 
     // 添加状态监听，所有状态变更都会走这个函数
     const handleStatusChange = (status) => {

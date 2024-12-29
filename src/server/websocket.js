@@ -23,7 +23,25 @@ export const WebSocketStatus = {
   CLOSING: "CLOSING",
   CLOSED: "CLOSED",
   ERROR: "ERROR"
-};
+}
+
+/**
+ * 是否为请求体
+ * @param {*} data 
+ * @returns 
+ */
+export const isRequest = data=>{
+  return typeof data.url === 'string'
+}
+
+/**
+ * 是否为响应体
+ * @param {*} data 
+ * @returns 
+ */
+export const isResponse = data=>{
+  return typeof data.success === 'boolean'
+}
 
 // 配置重连参数
 const options = {
@@ -49,6 +67,7 @@ class WebSocketClient {
     this.apiCallbackFns = {};
     // this.connect();
   }
+   callbacks = new Map()
 
   // 初始化整个对象
   connect() {
@@ -93,39 +112,43 @@ class WebSocketClient {
 
   onMessage(event) {
     try {
-      const response = JSON.parse(event.data);
-      if (response.success && response?.traceId) {
-        // 判断服务端传递什么信息
-        // 是否是已有接口
-        if (
-          typeof response.url === "string" &&
-          this.apiCallbackFns[response.url]
-        ) {
-          this.apiCallbackFns[response.url](this.ws, response);
-        } else {
-          console.error("未知的url", response.url);
+      const data = JSON.parse(event.data);
+      // 处理请求
+      if(isRequest(data)){
+        console.log(this.apiCallbackFns)
+        if (!this.apiCallbackFns[data.url]) {
+          console.error("未知的url", data.url);
           this.ws.send({
-            traceId: response.traceId,
+            traceId: data.traceId,
             success: false,
-            errorMsg: `${response.url} 未定义`
+            errorMsg: `${data.url} 未定义`
           });
           return;
         }
-
+        const res = this.apiCallbackFns[data.url](this.ws, data);
         // 分析完服务端传递过来的数据后，需要返回报文给服务端
         this.ws.send({
-          traceId: response.traceId,
-          success: response?.success ?? true,
-          data: response?.data ?? null
+          traceId: data.traceId,
+          success: data?.success ?? true,
+          data: data?.data ?? null
         });
+        return;
+      }
+
+      // 处理响应
+      if(isResponse(data)){
+        if(this.callbacks.has(data.traceId)){
+          if(success){
+            // 成功
+            this.callbacks.get(data.traceId).resolve(data)
+          }else{
+            // 失败
+            this.callbacks.get(data.traceId).reject(data)
+          }
+        }
       }
     } catch (error) {
-      console.error("解析消息失败", error);
-      this.ws.send({
-        // traceId: this.ws.traceId,
-        success: false,
-        errorMsg: error.message
-      });
+      console.error("解析消息失败", error,data);
     }
   }
 
