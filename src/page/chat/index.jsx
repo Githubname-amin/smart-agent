@@ -20,7 +20,7 @@ import {
   WebSocketStatus,
   registerApiCallbackFn
 } from "../../server/websocket";
-
+import { pluginParams } from "../../server/websocket";
 const Chat = () => {
   const [startPrompt, setStartPrompt] = useState([]); // 是否已经获取到prompt
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
@@ -261,6 +261,7 @@ const Chat = () => {
 
   useEffect(() => {
     setIsPageLoading(true);
+    console.log("pluginParams", pluginParams, window.location);
     // 添加状态监听
     const handleStatusChange = (status) => {
       console.log("handleStatusChange11", status);
@@ -399,6 +400,20 @@ const Chat = () => {
   };
   return (
     <div className="chat-box" style={{ margin: "10px" }}>
+      <div
+        onClick={() => {
+          websocketClient.onClose();
+        }}
+      >
+        测试按钮
+      </div>
+      <div
+        onClick={() => {
+          websocketClient.onReconnect();
+        }}
+      >
+        重连按钮
+      </div>
       {isPageLoading ? (
         <div>加载中...</div>
       ) : (

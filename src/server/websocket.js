@@ -1,243 +1,6 @@
-// import { isEmpty } from '@/utils/global-utils';
-// import HonLocatorGenerator, { OutputType } from '@alipay/hon-locator-generator';
-// import { message } from 'antd';
-// import ReconnectingWebSocket from 'reconnecting-websocket';
-// import { ErrorScenes } from './common/LogUtil';
-// import { error } from './common/LogUtil';
+import ReconnectingWebSocket from "reconnecting-websocket";
 
-// function getUrlParams(url){
-//   const searchParams = new URLSearchParams(url);
-//   const params = new Map();
-//   for (const [key, value] of searchParams) {
-//     params.set(key, value);
-//   }
-//   return params;
-// }
-
-// /**
-//  * port:string          端口号
-//  * isDark:bool          是否黑色主题
-//  * projectMD5:string    项目md5
-//  * isCloudIDE:bool     是否云IDE环境
-//  */
-// export const pluginParams = getUrlParams(window.location.search);
-
-// export interface WebSocketRequest {
-//   data: any;
-//   url: string;
-//   traceId: string;
-//   projectMD5: string;
-// }
-
-// export interface WebSocketResponse {
-//   data: any;
-//   message: string;
-//   traceId: string;
-//   success: boolean;
-// }
-
-// export interface ReactWebSocketRequest {
-//   data: any;
-//   url: string;
-// }
-
-// export const isRequest = (o: any): o is WebSocketRequest =>
-//   o.hasOwnProperty('url') === true;
-
-// export const isResponse = (o: any): o is WebSocketResponse =>
-//   o.hasOwnProperty('success') === true;
-
-// let globalReady = false;
-
-// export default function createReactConnector(
-//   facadeAPI: Map<
-//     string,
-//     (
-//       data: object,
-//       request: WebSocketRequest,
-//     ) => Promise<Partial<WebSocketResponse>>
-//   >,
-// ) {
-//   // 回调promise集合
-//   const callbacks = new Map<
-//     string,
-//     { resolve: (response: any) => void; reject: (error: any) => void }
-//   >();
-
-//   /** 提供挂在监听函数 */
-//   const useConnector = (
-//     fns: Map<
-//       string,
-//       (data: object, request: WebSocketRequest) => WebSocketResponse
-//     >,
-//   ) => {
-//     fns.forEach((fn, fnKey) => {
-//       // @ts-ignore
-//       facadeAPI.set(fnKey, fn);
-//     });
-//     globalReady = true;
-//   };
-
-//   const getHonDomain = (ip: string, port: string) => {
-//     const g = new HonLocatorGenerator('_HonMeirinHello_');
-//     const honDomain = `${g.generate(`${ip}:${port}`, OutputType.base32)}`;
-//     return honDomain;
-//   };
-
-//   /** websocket ws://127.0.0.1:xxxx?clientId=chat*/
-//   const ws = (function () {
-//     const host = isEmpty(pluginParams.get('ip'))
-//       ? '127.0.0.1'
-//       : pluginParams.get('ip');
-//     let server;
-//     const hostName = pluginParams.get('honUrl')?'ihon.alipay.com':'hon.alibaba-inc.com'
-//     if (pluginParams.get('isCloudIDE') === 'true') {
-//       server = new ReconnectingWebSocket(
-//         `wss://${getHonDomain(
-//           host,
-//           pluginParams.get('port'),
-//         )}.${hostName}`,
-//       );
-//     } else {
-//       server = new ReconnectingWebSocket(
-//         `ws://${host}:${pluginParams.get('port')}?clientId=CHAT`,
-//       );
-//     }
-
-//     server.addEventListener('open', () => {
-//       console.log(`socket 链接建立成功`);
-//       if (pluginParams.get('isCloudIDE') === 'true') {
-//         const timer = setInterval(() => {
-//           if (globalReady) {
-//             // 挂载当前channel
-//             ws.send('CHAT');
-//             clearInterval(timer);
-//           }
-//         }, 100);
-//       }
-//     });
-//     server.addEventListener('error', (err: any) => {
-//       error(`${JSON.stringify(err)}`,null,ErrorScenes.WEB_SOCKET_CONNECT_FAIL)
-//       message.error('socket 链接建立失败' + err);
-//     });
-//     return server;
-//   })();
-
-//   /** ws send */
-//   const send = (data: any) => {
-//     ws.send(JSON.stringify(data));
-//   };
-
-//   /** 监听 */
-//   ws.addEventListener('message', (e: { data: string }) => {
-//     console.log('接受到插件端消息', e);
-//     const body = JSON.parse(e.data);
-//     // 如果收到的是request，那么说明是发送的请求，那么执行对应的函数
-//     if (isRequest(body)) {
-//       let current = facadeAPI.get(body.url);
-
-//       if (!current) {
-//         send({
-//           success: false,
-//           traceId: body.traceId,
-//           errorMsg: `${body.url} 未定义`,
-//         });
-//         return;
-//       }
-
-//       const fn = current;
-
-//       try {
-//         fn(body.data, body).then((result) => {
-//           console.log(result);
-
-//           // 执行结果不返回，则直接中止执行
-//           if (result === undefined) {
-//             return;
-//           }
-
-//           // 返回响应结果
-//           send({
-//             traceId: body.traceId,
-//             data: result.data || null,
-//             success: result.success ?? true,
-//           });
-//         });
-//       } catch (err: any) {
-//         error(`request:${e.data},`,err,ErrorScenes.WEB_SOCKET_HANDLE_REQUEST_FAIL)
-//         send({
-//           success: false,
-//           traceId: body.traceId,
-//           data: null,
-//           message: err?.message || '执行错误',
-//         });
-//       }
-
-//       return;
-//     }
-
-//     // 如果收到的是 response，那么说明是收到的返回结果，那么检查 callbacks，并结束掉整个 promise
-//     if (isResponse(body)) {
-//       if (callbacks.has(body.traceId)) {
-//         const { success } = body;
-
-//         try {
-//           if (success) {
-//             callbacks.get(body.traceId)!.resolve(body);
-//           } else {
-//             callbacks.get(body.traceId)!.reject(body);
-//           }
-//         } catch (err:any) {
-//           error(`response:${e.data},`,err,ErrorScenes.WEB_SOCKET_HANDLE_RESPONSE_FAIL)
-//           console.log('err', err);
-//         }
-//       }
-//     }
-//   });
-
-//   /**
-//    * 生成traceId
-//    */
-//   function generateTraceId(): string {
-//     let timestamp = new Date().getTime();
-//     let random = Math.floor(Math.random() * 1000000);
-//     return `trace_${timestamp}_${random}`;
-//   }
-
-//   /**
-//    * 请求函数
-//    */
-//   const request = (reactRequest: ReactWebSocketRequest) => {
-//     let websocketRequest: WebSocketRequest = {
-//       data: reactRequest.data,
-//       url: reactRequest.url,
-//       traceId: generateTraceId(),
-//       projectMD5: pluginParams.has('projectMD5')
-//         ? pluginParams.get('projectMD5')!!
-//         : '',
-//     };
-//     return new Promise<WebSocketResponse>((resolve, reject) => {
-//       callbacks.set(websocketRequest.traceId, { resolve, reject });
-//       send(websocketRequest);
-//     });
-//   };
-
-//   return {
-//     useConnector,
-//     request,
-//   };
-// }
-
-// import createReactConnector, {WebSocketResponse } from '@/components/ChatGpt/socketConnector';
-
-// const { request,useConnector } = createReactConnector(
-//   new Map<string,(data:any)=>WebSocketResponse>(),
-// );
-
-// export const socketListener = useConnector;
-// export const websocketClient = request;
-
-function getUrlParams(url){
+function getUrlParams(url) {
   const searchParams = new URLSearchParams(url);
   const params = new Map();
   for (const [key, value] of searchParams) {
@@ -262,79 +25,144 @@ export const WebSocketStatus = {
   ERROR: "ERROR"
 };
 
+// 配置重连参数
+const options = {
+  maxRetries: 10, // 最大重试次数
+  reconnectionDelayGrowFactor: 1.3, // 重新连接延迟增长的速度
+  minReconnectionDelay: 1000, // 最小重连延迟(ms)
+  maxReconnectionDelay: 5000, // 最大重连延迟(ms)
+  connectionTimeout: 4000 // 连接超时时间(ms)
+};
+
 class WebSocketClient {
-  constructor(url = pluginParams.get(`127.0.0.1:${pluginParams.get("port")}?clientId=CHAT`)) {
+  constructor(
+    // url = pluginParams.get(
+    //   `127.0.0.1:${pluginParams.get("port")}?clientId=CHAT`
+    // )
+    url = "ws://127.0.0.1:3020"
+  ) {
     this.url = url;
     this.ws = null;
     this.messageQueue = [];
     // 用字段记录当前webscoket的状态，用来页面交互
     this.wsState = "";
-    this.connect();
     // 记录监听行为
     this.statusChangeCallbacks = [];
     // 记录接口处理函数
     this.apiCallbackFns = {};
+    this.connect();
   }
 
   connect() {
-    this.ws = new WebSocket(this.url);
+    this.ws = new ReconnectingWebSocket(this.url, [], options);
 
-    this.ws.onopen = () => {
-      console.log("WebSocket 连接成功");
-      this.updateStatus(WebSocketStatus.OPEN);
-    };
+    this.ws.addEventListener("open", () => {
+      this.onOpen();
+    });
 
-    this.ws.onmessage = (event) => {
-      try {
-        const response = JSON.parse(event.data);
-        if (response.success && response?.traceId) {
-          console.log("websocket收到消息", response);
-          this.updateStatus(WebSocketStatus.OPEN);
-          // 判断服务端传递什么信息
-          // 是否是接口
-          if (typeof response.url === "string") {
-            // 是接口
-            switch (response.url) {
-              case "/chat/selectCode":
-                // 服务端传递某些代码给到前端
-                if (this.apiCallbackFns[response.url]) {
-                  this.apiCallbackFns[response.url](this.ws, response);
-                }
-                break;
-              case "/chat/insertCodeToEditor":
-                // 服务端传递某些代码给到前端
-                if (this.apiCallbackFns[response.url]) {
-                  this.apiCallbackFns[response.url](this.ws, response);
-                }
-                break;
-              case "/chat/prompt":
-                // 服务端传递prompt给到前端
-                if (this.apiCallbackFns[response.url]) {
-                  this.apiCallbackFns[response.url](this.ws, response);
-                }
-                break;
-              default:
-                console.log("未知的url", response.url);
-                break;
-            }
-          }
-        }
-      } catch (error) {
-        console.error("解析消息失败", error);
-      }
-    };
+    this.ws.addEventListener("message", (event) => {
+      this.onMessage(event);
+    });
 
-    this.ws.onerror = (error) => {
-      console.error("WebSocket 连接错误", error);
-      this.updateStatus(WebSocketStatus.ERROR);
-    };
+    this.ws.addEventListener("error", (error) => {
+      this.onError(error);
+    });
 
-    this.ws.onclose = () => {
-      console.log("WebSocket 连接关闭");
-      this.updateStatus(WebSocketStatus.CLOSED);
-    };
+    this.ws.addEventListener("close", (event) => {
+      console.log("WebSocket 连接关闭", event);
+    });
+
+    // 监听重连事件
+    this.ws.addEventListener("connecting", (event) => {
+      this.onConnecting();
+      this.updateStatus(WebSocketStatus.CONNECTING);
+    });
   }
 
+  // ----------------------------------------------------------------
+  // websocket 的一些事件
+
+  onOpen() {
+    console.log("WebSocket 连接成功");
+    // 连接成功后发送队列中的消息（防止之前意外断开）
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      this.ws.send(JSON.stringify(message));
+    }
+  }
+
+  onMessage(event) {
+    try {
+      const response = JSON.parse(event.data);
+      if (response.success && response?.traceId) {
+        console.log("websocket收到消息", response);
+        // 判断服务端传递什么信息
+        // 是否是接口
+        if (typeof response.url === "string") {
+          // 是接口
+          switch (response.url) {
+            case "/chat/selectCode":
+              // 服务端传递某些代码给到前端
+              if (this.apiCallbackFns[response.url]) {
+                this.apiCallbackFns[response.url](this.ws, response);
+              }
+              break;
+            case "/chat/insertCodeToEditor":
+              // 服务端传递某些代码给到前端
+              if (this.apiCallbackFns[response.url]) {
+                this.apiCallbackFns[response.url](this.ws, response);
+              }
+              break;
+            case "/chat/prompt":
+              // 服务端传递prompt给到前端
+              if (this.apiCallbackFns[response.url]) {
+                this.apiCallbackFns[response.url](this.ws, response);
+              }
+              break;
+            default:
+              console.log("未知的url", response.url);
+              break;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("解析消息失败", error);
+    }
+  }
+
+  onError(error) {
+    console.error("WebSocket 连接错误", error);
+    this.updateStatus(WebSocketStatus.ERROR);
+  }
+
+  onConnecting() {
+    console.log("正在尝试重连...");
+  }
+
+  // 注销ws示例
+  onClose() {
+    this.updateStatus(WebSocketStatus.CLOSED);
+    console.log("手动关闭连接", this.ws);
+    if (this.ws) {
+      this.ws.removeEventListener("message", this.onMessage);
+      this.ws.removeEventListener("error", this.onError);
+      // this.ws.removeEventListener("close", this.onClose);
+      this.ws.removeEventListener("connecting", this.onConnecting);
+      this.ws.close(1000, "手动关闭连接", { keepClosed: true });
+    }
+    this.ws = null;
+  }
+
+  // 手动重连，是用来前期测试查看情况的
+  onReconnect() {
+    if (this.ws) {
+      this.ws.reconnect();
+    } else {
+      this.connect();
+    }
+  }
+
+  // ----------------------------------------------------------------
   /** 监听状态变化 */
   onStatusChange(callback) {
     this.statusChangeCallbacks.push(callback);
@@ -356,24 +184,33 @@ class WebSocketClient {
   /** 发送消息 */
   async sendMessage(url, request) {
     return new Promise((resolve, reject) => {
-      // 检查是否链接websocket
-      if (!this.ws || this.ws.readyState !== WebSocketStatus.OPEN) {
-        reject(new Error("WebSocket 未连接"));
-        return;
-      }
       const traceId = generateTraceId();
       const message = {
         url,
         request,
         traceId
       };
-      this.ws.send(JSON.stringify(message));
+
+      // 检查是否链接websocket，如果没连接可能意外断开，则需要在重连的时候发送信息
+      //  将当前信息储存在队列中
+      if (!this.ws || this.ws.readyState !== WebSocketStatus.OPEN) {
+        this.messageQueue.push(message);
+        // reject(new Error("WebSocket 未连接"));
+        //  等待重连
+        return;
+      }
+
+      try {
+        this.ws.send(JSON.stringify(message));
+        resolve();
+      } catch (error) {
+        console.error("WebSocket 发送消息失败", error);
+        reject(error);
+      }
     });
   }
-
-  //---------------------------------------------
 }
-
+//---------------------------------------------
 /**
  * 生成traceId
  */
