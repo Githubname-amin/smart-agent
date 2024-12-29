@@ -237,6 +237,23 @@
 // export const socketListener = useConnector;
 // export const websocketClient = request;
 
+function getUrlParams(url){
+  const searchParams = new URLSearchParams(url);
+  const params = new Map();
+  for (const [key, value] of searchParams) {
+    params.set(key, value);
+  }
+  return params;
+}
+
+/**
+ * port:string          端口号
+ * isDark:bool          是否黑色主题
+ * projectMD5:string    项目md5
+ * pluginVersion:string 插件版本
+ */
+export const pluginParams = getUrlParams(window.location.search);
+
 export const WebSocketStatus = {
   CONNECTING: "CONNECTING",
   OPEN: "OPEN",
@@ -246,7 +263,7 @@ export const WebSocketStatus = {
 };
 
 class WebSocketClient {
-  constructor(url = "ws://localhost:3020") {
+  constructor(url = pluginParams.get(`127.0.0.1:${pluginParams.get("port")}?clientId=CHAT`)) {
     this.url = url;
     this.ws = null;
     this.messageQueue = [];
