@@ -98,6 +98,14 @@ class WebSocketClient {
     });
   }
 
+  /**
+   * 发送消息
+   * @param {*} data 
+   */
+  send(data){
+    this.ws.send(JSON.stringify(data))
+  }
+
   // ----------------------------------------------------------------
   // websocket 的一些事件
 
@@ -106,7 +114,7 @@ class WebSocketClient {
     // 连接成功后发送队列中的消息（防止之前意外断开）
     while (this.messageQueue.length > 0) {
       const message = this.messageQueue.shift();
-      this.ws.send(JSON.stringify(message));
+      this.send(message)
     }
   }
 
@@ -118,7 +126,7 @@ class WebSocketClient {
         console.log(this.apiCallbackFns)
         if (!this.apiCallbackFns[data.url]) {
           console.error("未知的url", data.url);
-          this.ws.send({
+          this.send({
             traceId: data.traceId,
             success: false,
             errorMsg: `${data.url} 未定义`
@@ -127,7 +135,7 @@ class WebSocketClient {
         }
         const res = this.apiCallbackFns[data.url](this.ws, data);
         // 分析完服务端传递过来的数据后，需要返回报文给服务端
-        this.ws.send({
+        this.send({
           traceId: data.traceId,
           success: data?.success ?? true,
           data: data?.data ?? null
@@ -222,13 +230,10 @@ class WebSocketClient {
         return;
       }
 
-      try {
-        this.ws.send(JSON.stringify(message));
-        resolve();
-      } catch (error) {
-        console.error("WebSocket 发送消息失败", error);
-        reject(error);
-      }
+      return new Promise((resolve,reject)=>{
+        this.callbacks.set(message.traceId,{resolve,reject})
+        this.send(message)
+      })
     });
   }
 
