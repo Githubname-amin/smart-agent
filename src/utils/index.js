@@ -1,8 +1,29 @@
 import { message } from "antd";
 
 export const handleCopyMessage = (item) => {
-  navigator.clipboard.writeText(item.content);
-  message.success("复制成功");
+  try {
+    // 这里直接使用navigator.clipboard.writeText会报错，因为环境不同。如果使用调用api的方式的话，不如间接使用idea的方法
+    // 创建临时文本区域
+    const textArea = document.createElement("textarea");
+    textArea.value = item.content;
+
+    // 将文本区域添加到文档中
+    document.body.appendChild(textArea);
+
+    // 选中文本
+    textArea.select();
+
+    // 执行复制命令
+    document.execCommand("copy");
+
+    // 移除临时文本区域
+    document.body.removeChild(textArea);
+
+    message.success("复制成功");
+  } catch (error) {
+    console.error("复制失败:", error);
+    message.error("复制失败");
+  }
 };
 
 // 检测复制的内容是否为代码的辅助函数
@@ -31,3 +52,12 @@ export const detectLanguage = (content) => {
 
   return match ? match[1] || "javascript" : "javascript";
 };
+
+/**
+ * 生成traceId
+ */
+export function generateTraceId() {
+  let timestamp = new Date().getTime();
+  let random = Math.floor(Math.random() * 1000000);
+  return `trace_${timestamp}_${random}`;
+}

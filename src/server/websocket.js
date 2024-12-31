@@ -1,4 +1,5 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
+import { generateTraceId } from "../utils";
 
 function getUrlParams(url) {
   const searchParams = new URLSearchParams(url);
@@ -252,14 +253,7 @@ class WebSocketClient {
   }
 }
 //---------------------------------------------
-/**
- * 生成traceId
- */
-function generateTraceId() {
-  let timestamp = new Date().getTime();
-  let random = Math.floor(Math.random() * 1000000);
-  return `trace_${timestamp}_${random}`;
-}
+
 
 export const websocketClient = new WebSocketClient();
 // 检查连接状态
