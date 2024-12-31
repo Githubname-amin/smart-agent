@@ -158,13 +158,12 @@ const Chat = () => {
       // 使用buffer来处理流式响应
       for await (const chunk of response) {
         const content = chunk.choices[0].delta.content;
-        // const result = codeBuffer.current.process(content);
         const result = await codeBuffer.current.processWindow(content);
-        if (chunk?.finish_reason === "stop") {
+        if (chunk?.choices[0]?.finish_reason === "stop") {
           const result = codeBuffer.current.flush();
           console.log("resultStop", result, content, currentData);
         }
-        console.log("result", result, content, currentData);
+        // console.log("result", result, content, currentData);
         if (result) {
           if (result.type === "text") {
             setCurrentData((prevData) => {
@@ -177,6 +176,7 @@ const Chat = () => {
             });
           }
           if (result.type === "code") {
+            const nowTraceId = result.traceId;
             // 如果对于当前的这次代码块没有位置,则录入一个空数组,用于渲染页面
             // 这里也可能直接是返回代码,那么没有assistant数据
             setCurrentData((prevData) => {
@@ -185,15 +185,13 @@ const Chat = () => {
               if (
                 lastMessage.role === "assistant" &&
                 !lastMessage.content.find(
-                  (item) =>
-                    item.type === "code" &&
-                    item.traceId === String(codeBuffer.current.codeTraceId)
+                  (item) => item.type === "code" && item.traceId === nowTraceId
                 )
               ) {
                 lastMessage.content.push({
-                  content: "",
                   type: "code",
-                  traceId: String(codeBuffer.current.codeTraceId)
+                  content: "",
+                  traceId: nowTraceId
                 });
               }
               return { ...prevData, message: newMessage }; // 这里需要返回新的状态
@@ -202,27 +200,29 @@ const Chat = () => {
             console.log(
               "currentCodeBlockListRef",
               currentCodeBlockListRef,
-              currentCodeBlockListRef.current[0]?.traceId ===
-                String(codeBuffer.current.codeTraceId)
+              currentCodeBlockListRef.current[0]?.traceId === result.traceId
             );
-            const traceId = String(codeBuffer.current.codeTraceId);
+
             const existingBlock = currentCodeBlockListRef.current.find(
-              (item) => item.traceId === traceId
+              (item) => item.traceId === nowTraceId
             );
             if (existingBlock) {
               // 存在这条代码,更新,在后面加上现在返回的代码
               const currentCode = existingBlock.code;
-              const newCode = currentCode + result.content;
+              const newCode = currentCode + result.code;
               const updateList = currentCodeBlockListRef.current.map((item) =>
-                item.traceId === traceId ? { ...item, code: newCode } : item
+                item.traceId === nowTraceId ? { ...item, code: newCode } : item
               );
               currentCodeBlockListRef.current = updateList;
               setCurrentCodeBlockList(updateList);
             } else {
+              // 如果是其他代码块，需要保留之前代码块
               const newList = [
+                ...currentCodeBlockListRef.current,
                 {
-                  traceId: traceId,
-                  code: result.content
+                  traceId: nowTraceId,
+                  code: result.code,
+                  language: result.language
                 }
               ];
               currentCodeBlockListRef.current = newList;
@@ -251,7 +251,11 @@ const Chat = () => {
     console.log("handleSelectCode前端页面", ws, request);
     // 获取到代码后，插入到输入框上层的代码展示区域
     currentCodeBlockListRef.current = [
-      { traceId: request.traceId, code: request.data.code }
+      {
+        traceId: request.traceId,
+        code: request.data.code,
+        language: request.data.language
+      }
     ];
   };
 
@@ -271,35 +275,45 @@ const Chat = () => {
         </span>
       );
     }
-    console.log("查询当前许多数据", content);
+    console.log("content", content, currentCodeBlockList);
     return content.map((item, index) => {
-      // debugger;
       if (item.type === "code") {
         return (
           <div
             key={`code-${index}`}
-            id={`code-${codeBuffer.current.codeTraceId}`}
+            id={`code-${item.traceId}`}
             className="code-block"
           >
             <div className="code-block-title">
-              <span>{"java"}</span>
+              <span>
+                {
+                  currentCodeBlockList.find(
+                    (codeBlockItem) => codeBlockItem.traceId === item.traceId
+                  )?.language
+                }
+              </span>
               <CopyOutlined
                 className="code-block-title-copy"
                 onClick={() =>
                   handleCopyMessage(
                     currentCodeBlockList.find(
-                      (item) =>
-                        item.traceId === String(codeBuffer.current.codeTraceId)
+                      (codeBlockItem) => codeBlockItem.traceId === item.traceId
                     )
                   )
                 }
               />
             </div>
-            <SyntaxHighlighter language={"java"} style={vscDarkPlus}>
+            <SyntaxHighlighter
+              language={
+                currentCodeBlockList.find(
+                  (codeBlockItem) => codeBlockItem.traceId === item.traceId
+                )?.language
+              }
+              style={vscDarkPlus}
+            >
               {
                 currentCodeBlockList.find(
-                  (item) =>
-                    item.traceId === String(codeBuffer.current.codeTraceId)
+                  (codeBlockItem) => codeBlockItem.traceId === item.traceId
                 )?.code
               }
             </SyntaxHighlighter>
@@ -309,25 +323,6 @@ const Chat = () => {
         return <span key={`text-${index}`}>{item.content}</span>;
       }
     });
-
-    // return (
-    //   <div id={`code-${codeBuffer.current.codeTraceId}`} className="code-block">
-    //     <div className="code-block-title">
-    //       <span>{"java"}</span>
-    //       <CopyOutlined
-    //         className="code-block-title-copy"
-    //         onClick={() =>
-    //           handleCopyMessage(
-    //             codeBlockRef.current[codeBuffer.current.codeTraceId]
-    //           )
-    //         }
-    //       />
-    //     </div>
-    //     <SyntaxHighlighter language={"java"} style={vscDarkPlus}>
-    //       {codeBlockRef.current[codeBuffer.current.codeTraceId]}
-    //     </SyntaxHighlighter>
-    //   </div>
-    // );
   };
 
   useEffect(() => {
@@ -461,37 +456,8 @@ const Chat = () => {
     );
   };
 
-  // 代码展示组件
-  const messageRender = (msgItem) => {
-    // 处理返回体中的代码片段
-    if (msgItem.role === "assistant") {
-      const codeBlock = msgItem.content.match(/```[\s\S]*```/g);
-      if (codeBlock) {
-        return codeBlock.map((code) => {
-          return (
-            <SyntaxHighlighter language="javascript">{code}</SyntaxHighlighter>
-          );
-        });
-      }
-    }
-    return msgItem.content;
-  };
   return (
     <div className="chat-box" style={{ margin: "10px" }}>
-      {/* <div
-        onClick={() => {
-          websocketClient.onClose();
-        }}
-      >
-        测试按钮
-      </div>
-      <div
-        onClick={() => {
-          websocketClient.onReconnect();
-        }}
-      >
-        重连按钮
-      </div> */}
       {false ? (
         <div>加载中...</div>
       ) : (
