@@ -118,7 +118,8 @@ const Chat = () => {
     // 前端校验结束，那么录入信息
     const nowUserMessage = {
       role: "user",
-      content: inputValue
+      content: inputValue,
+      time: new Date().toLocaleTimeString()
     };
     setCurrentData((prevData) => ({
       ...prevData,
@@ -128,7 +129,8 @@ const Chat = () => {
     // 创建助手的空消息
     const assistantMessage = {
       role: "assistant",
-      content: []
+      content: [],
+      time: new Date().toLocaleTimeString()
     };
     setCurrentData((prevData) => ({
       ...prevData,
@@ -418,11 +420,19 @@ const Chat = () => {
               })}
           </div>
         </div>
-        <div>
+        <div className="chat-input-component-title-code-box">
           {/* 展示当前选中任务的代码 */}
           {currentSelectCode && currentSelectCode?.code && (
-            <div className="chat-input-component-title-traceId-code">
-              <SyntaxHighlighter language={"java"} style={vscDarkPlus}>
+            <div
+              className="chat-input-component-title-traceId-code"
+              style={{
+                maxHeight: currentSelectCode?.code ? "none" : "200px"
+              }}
+            >
+              <SyntaxHighlighter
+                language={currentSelectCode?.language}
+                style={vscDarkPlus}
+              >
                 {currentSelectCode?.code}
               </SyntaxHighlighter>
             </div>
@@ -494,12 +504,13 @@ const Chat = () => {
                           </div>
                         </div>
                         <div className="chat-content-item-content-time">
-                          {new Date().toLocaleTimeString()}
+                          {item.time ? item.time : ""}
                         </div>
                       </div>
                     </div>
                   ))}
                   <div className="chat-content-item-content-empty">
+                    {/* 需要处理粘贴板 */}
                     {pastedCodeData}
                     {InputComponent("bottom")}
                   </div>
