@@ -4,11 +4,7 @@ import { Button, message } from "antd";
 import TextArea from "antd/es/input/TextArea";
 import { CopyOutlined, CloseOutlined } from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode } from "../../utils";
-import {
-  clearChatDatas,
-  userHistoryDataClient,
-  sendHTTPChat
-} from "../../server/model";
+import { userHistoryDataClient, sendHTTPChat } from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { CodeBuffer } from "../../utils/buffer";
@@ -17,15 +13,11 @@ import {
   WebSocketStatus,
   registerApiCallbackFn
 } from "../../server/websocket";
-import { pluginParams } from "../../server/websocket";
 const Chat = () => {
-  const [startPrompt, setStartPrompt] = useState([]); // 是否已经获取到prompt
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
   const [inputValue, setInputValue] = useState("");
-  // const [inputIsTop, setInputIsTop] = useState(false); //有对话记录的清空下，输入框是否置顶
   const [pastedCodeData, setPastedCodeData] = useState(""); // 粘贴的代码数据
-  const [isCollectingCode, setIsCollectingCode] = useState(false); // 是否正在收集代码
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false); // 是否正在加载 prompt 上下文，适用于最初加载和后续添加新代码快
 
   // 当前对话上下文收集统计到的代码块集合
@@ -146,7 +138,7 @@ const Chat = () => {
     try {
       // const response = await sendMessageTest(inputValue);
       const response = await sendHTTPChat(inputValue);
-      console.log("response前端js", response);
+      // console.log("response前端js", response);
 
       // 用for await 来处理流式响应
       // 使用buffer来处理流式响应
@@ -359,7 +351,8 @@ const Chat = () => {
 
     return () => {
       // 对话结束的时候，清空messages对话上下文
-      clearChatDatas();
+      const result = userHistoryDataClient.clearAllUserHistoryData();
+      console.log("当前用户所有的对话数据", result);
       // 移除状态监听
       websocketClient.removeStatusChange(handleStatusChange);
     };

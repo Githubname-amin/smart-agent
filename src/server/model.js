@@ -1,16 +1,6 @@
 // 与大模型交互的接口定义处
-import OpenAI from "openai";
 import { ALI_CONFIG } from "./config";
-const axios = require("axios");
-
-// 判断是否是IntelliJ环境
-const isIntelliJEnvironment = window.intellij !== undefined;
-const openai = new OpenAI({
-  // 若没有配置环境变量，请用百炼API Key将下行替换为：apiKey: "sk-xxx",
-  apiKey: ALI_CONFIG.apiKey,
-  dangerouslyAllowBrowser: true, // 注意：仅在充分了解风险并采取了安全措施后启用
-  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-});
+import axios from "axios";
 
 /**
  * 用户对话历史类，后续展示对话概述，从而定位到聊天历史
@@ -28,11 +18,6 @@ class userHistoryDatas {
   // 添加消息
   addChatData(chatData) {
     this.chatDatas.push(chatData);
-  }
-
-  // 清空消息
-  clearChatDatas() {
-    this.chatDatas = [];
   }
 
   // 获取消息
@@ -53,18 +38,25 @@ class userHistoryDatas {
     return this.traceId;
   }
 
-  // 清空当前对话涉及到上下文 traceId
-  clearTraceId() {
-    this.traceId = [];
-  }
-
   // 修改当前对话涉及到上下文 traceId
   updateTraceId(traceId) {}
 
   // 初始化对象程序，写入一些背景 prompt
   initChatDatas(currentChatDatas, traceId) {
-    this.chatDatas = [...this.chatDatas, ...currentChatDatas];
-    this.traceId = [...this.traceId, ...traceId];
+    this.addChatData(currentChatDatas);
+    this.addTraceId(traceId);
+  }
+
+  // 对话结束后，清空整体上下文，返回当前记录的所有数据
+  clearAllUserHistoryData() {
+    const result = {
+      userTraceId: this.userTraceId,
+      chatDatas: [...this.chatDatas],
+      traceId: [...this.traceId]
+    };
+    this.chatDatas = [];
+    this.traceId = [];
+    return result;
   }
 }
 
@@ -81,17 +73,6 @@ export const sendHTTPChat = async function* (currentChatData) {
     content: currentChatData
   });
   try {
-    // const data = {
-    //   model: "qwen-turbo",
-    //   input: {
-    //     messages: [...userHistoryDataClient.getChatDatas()]
-    //   },
-    //   parameters: {
-    //     stream: true,
-    //     incremental_output: true
-    //   }
-    // };
-    // console.log("data???", data);
     const nowData = {
       model: "qwen-turbo",
       messages: [...userHistoryDataClient.getChatDatas()],
@@ -105,7 +86,7 @@ export const sendHTTPChat = async function* (currentChatData) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer sk-f3aa6b3f9ab74a41a39656b162155f9b`,
+            Authorization: `Bearer ${ALI_CONFIG.apiKey}`,
             Accept: "text/event-stream",
             "X-DashScope-SSE": "enable"
           },
@@ -183,55 +164,22 @@ export const sendChatDataTest = async function* (currentChatData) {
   }
 };
 
-// 设置对话上下文，初次的时候传入后端传入的prompt，否则自定义.|如果后续需要记录对话历史，则需要设定用户层面的traceId
-let chatDatas = [];
-
-// 修改messages
-export const updateChatDatas = (currentChatDatas) => {
-  chatDatas = [...chatDatas, ...currentChatDatas];
-};
-// 对话结束或者新增对话的时候，需要清空messages
-export const clearChatDatas = () => {
-  chatDatas = [];
-};
-
-// 获取messages
-export const getChatDatas = () => {
-  return chatDatas;
-};
-
 // 现在没有走这里的请求，而是走的node端的请求
 export const initChatData = async (initChatDatas) => {
-  updateChatDatas(initChatDatas);
-
   const data = {
     model: "qwen-turbo",
     input: {
-      messages: getChatDatas()
+      messages: userHistoryDataClient.getChatDatas()
     },
     parameters: {
       stream: true
     }
   };
-  if (isIntelliJEnvironment) {
-    // 在axios的post里面规范header和body
-    const response = await axios.post(
-      "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-      {
-        body: data,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + ALI_CONFIG.apiKey
-        }
-      }
-    );
-    console.log("response初始，在idea", response);
-  } else {
-    const response = await axios.post("http://localhost:3021/api/chat", data, {
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-    console.log("response11111,调试", response);
-  }
+
+  const response = await axios.post("http://localhost:3021/api/chat", data, {
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+  console.log("response11111,调试", response);
 };

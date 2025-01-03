@@ -24,25 +24,25 @@ export const WebSocketStatus = {
   CLOSING: "CLOSING",
   CLOSED: "CLOSED",
   ERROR: "ERROR"
-}
+};
 
 /**
  * 是否为请求体
- * @param {*} data 
- * @returns 
+ * @param {*} data
+ * @returns
  */
-export const isRequest = data=>{
-  return typeof data.url === 'string'
-}
+export const isRequest = (data) => {
+  return typeof data.url === "string";
+};
 
 /**
  * 是否为响应体
- * @param {*} data 
- * @returns 
+ * @param {*} data
+ * @returns
  */
-export const isResponse = data=>{
-  return typeof data.success === 'boolean'
-}
+export const isResponse = (data) => {
+  return typeof data.success === "boolean";
+};
 
 // 配置重连参数
 const options = {
@@ -68,7 +68,7 @@ class WebSocketClient {
     this.apiCallbackFns = {};
     // this.connect();
   }
-   callbacks = new Map()
+  callbacks = new Map();
 
   // 初始化整个对象
   connect() {
@@ -101,10 +101,10 @@ class WebSocketClient {
 
   /**
    * 发送消息
-   * @param {*} data 
+   * @param {*} data
    */
-  send(data){
-    this.ws.send(JSON.stringify(data))
+  send(data) {
+    this.ws.send(JSON.stringify(data));
   }
 
   // ----------------------------------------------------------------
@@ -115,7 +115,10 @@ class WebSocketClient {
     // 连接成功后发送队列中的消息（防止之前意外断开）
     while (this.messageQueue.length > 0) {
       const message = this.messageQueue.shift();
-      this.send(message)
+      this.send({
+        ...message,
+        type: "requestOpen"
+      });
     }
   }
 
@@ -123,11 +126,13 @@ class WebSocketClient {
     try {
       const data = JSON.parse(event.data);
       // 处理请求
-      if(isRequest(data)){
-        console.log(this.apiCallbackFns)
+      if (isRequest(data)) {
+        console.log("websocket的请求", this.apiCallbackFns);
         if (!this.apiCallbackFns[data.url]) {
           console.error("未知的url", data.url);
+          // 每次请求完会再通知服务端
           this.send({
+            type: "responseError",
             traceId: data.traceId,
             success: false,
             errorMsg: `${data.url} 未定义`
@@ -135,8 +140,9 @@ class WebSocketClient {
           return;
         }
         const res = this.apiCallbackFns[data.url](this.ws, data);
-        // 分析完服务端传递过来的数据后，需要返回报文给服务端
+        // 每次分析完服务端传递过来的数据后，需要返回报文给服务端
         this.send({
+          type: "responseSuccess",
           traceId: data.traceId,
           success: data?.success ?? true,
           data: data?.data ?? null
@@ -145,19 +151,19 @@ class WebSocketClient {
       }
 
       // 处理响应
-      if(isResponse(data)){
-        if(this.callbacks.has(data.traceId)){
-          if(success){
+      if (isResponse(data)) {
+        if (this.callbacks.has(data.traceId)) {
+          if (data.success) {
             // 成功
-            this.callbacks.get(data.traceId).resolve(data)
-          }else{
+            this.callbacks.get(data.traceId).resolve(data);
+          } else {
             // 失败
-            this.callbacks.get(data.traceId).reject(data)
+            this.callbacks.get(data.traceId).reject(data);
           }
         }
       }
     } catch (error) {
-      console.error("解析消息失败", error,data);
+      console.error("解析消息失败", error);
     }
   }
 
@@ -226,15 +232,19 @@ class WebSocketClient {
       //  将当前信息储存在队列中
       if (!this.ws || this.ws.readyState !== WebSocketStatus.OPEN) {
         this.messageQueue.push(message);
+        console.log("websocket未连接，将信息储存在队列中", this.messageQueue);
         // reject(new Error("WebSocket 未连接"));
         //  等待重连
         return;
       }
 
-      return new Promise((resolve,reject)=>{
-        this.callbacks.set(message.traceId,{resolve,reject})
-        this.send(message)
-      })
+      return new Promise((resolve, reject) => {
+        this.callbacks.set(message.traceId, { resolve, reject });
+        this.send({
+          ...message,
+          type: "requestSend"
+        });
+      });
     });
   }
 
@@ -253,7 +263,6 @@ class WebSocketClient {
   }
 }
 //---------------------------------------------
-
 
 export const websocketClient = new WebSocketClient();
 // 检查连接状态
