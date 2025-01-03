@@ -37,6 +37,7 @@ const Chat = () => {
   }); //当前输入框内展示的代码块
 
   const codeBuffer = useRef(new CodeBuffer());
+  const historyChatDatas = useRef("");
 
   // --------------------------------------------------------
   // 输入框相关的函数
@@ -151,11 +152,23 @@ const Chat = () => {
       // 使用buffer来处理流式响应
       for await (const chunk of response) {
         const content = chunk.choices[0].delta.content;
+        // 需要保存一份纯粹的字符串形式，后续作为chat应答发送给下一次对话
+        historyChatDatas.current += content;
         const result = await codeBuffer.current.processWindow(content);
         if (chunk?.choices[0]?.finish_reason === "stop") {
           const result = codeBuffer.current.flush();
-          console.log("resultStop", result, content, currentData);
-          debugger;
+          userHistoryDataClient.addChatData({
+            role: "assistant",
+            content: historyChatDatas.current
+          });
+          console.log(
+            "resultStop",
+            result,
+            content,
+            currentData
+            // historyChatDatas
+          );
+          // debugger;
         }
         // console.log("result", result, content, currentData);
         if (result) {

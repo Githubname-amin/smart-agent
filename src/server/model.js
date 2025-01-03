@@ -12,11 +12,17 @@ const openai = new OpenAI({
   baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 });
 
+/**
+ * 用户对话历史类，后续展示对话概述，从而定位到聊天历史
+ * userTraceId: 用户traceId，用来记录消息历史
+ * traceId: 当前用户操作过的traceId，仅用来记录上下文历史，在对话的时候没有什么意义
+ * chatDatas: 当前用户操作的消息，记录所有的对话记录，后续上传
+ */
 class userHistoryDatas {
   constructor(userTraceId) {
-    this.userTraceId = userTraceId; // 用户traceId，用来记录消息历史
-    this.traceId = []; // 当前用户操作的traceId，仅用来记录上下文历史，在对话的时候没有什么意义
-    this.chatDatas = []; // 当前用户操作的消息，记录所有的对话记录，后续上传
+    this.userTraceId = userTraceId;
+    this.traceId = [];
+    this.chatDatas = [];
   }
 
   // 添加消息
