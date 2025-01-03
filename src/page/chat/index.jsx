@@ -11,6 +11,7 @@ import { CodeBuffer } from "../../utils/buffer";
 import {
   websocketClient,
   WebSocketStatus,
+  pluginParams,
   registerApiCallbackFn
 } from "../../server/websocket";
 const Chat = () => {
@@ -368,11 +369,13 @@ const Chat = () => {
         }`}
       >
         <div className="chat-input-component-title">
-          <span className="chat-input-component-title-text">
-            <span>
-              + Add Context
-              {isLoadingPrompt ? "加载中..." : ""}
-            </span>
+          <div className="chat-input-component-title-text-box">
+            <div className="chat-input-component-title-text">
+              <div>
+                <span style={{ margin: "0 2px" }}>+</span> Add Context
+              </div>
+              <div>{isLoadingPrompt ? "加载中..." : ""}</div>
+            </div>
 
             {currentSelectCode?.traceId && (
               <CopyOutlined
@@ -381,7 +384,7 @@ const Chat = () => {
                 }}
               />
             )}
-          </span>
+          </div>
           <div className="chat-input-component-title-traceId-box">
             {currentCodeBlockListRef.current.length > 0 &&
               currentCodeBlockListRef.current.map((item, index) => {
@@ -449,7 +452,7 @@ const Chat = () => {
             className="chat-submit-btn"
             onClick={() => handleSendMessage(isTop)}
           >
-            {isComposing ? "停止" : "发送"}
+            {isComposing ? "停止" : "发送 "}
           </Button>
         </div>
       </div>
@@ -457,11 +460,11 @@ const Chat = () => {
   };
 
   return (
-    <div className="chat-box" style={{ margin: "10px" }}>
+    <div className="chat-box">
       {false ? (
         <div>加载中...</div>
       ) : (
-        <div className="chat-container">
+        <div className="chat-container" style={{ margin: "10px" }}>
           <div className="chat-content">
             <div className="chat-content-item">
               {!currentData?.message?.length ? (

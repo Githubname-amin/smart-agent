@@ -1,5 +1,59 @@
+html {
+  margin-right: 0 !important; /* 防止滚动条占位 */
+}
+body {
+  width: 100vw; /* 确保宽度填充 */
+  height: 100vh; /* 确保高度填充 */
+}
 .App {
   text-align: center;
+  --background-color: rgba(255, 255, 255, 1);
+  --user-background-color: rgba(236, 236, 236, 1);
+  --text-color: rgba(8, 8, 8, 1);
+  --border-color: rgba(108, 112, 126, 1);
+  --dark-border-color: rgba(108, 112, 126, 1);
+  --font-size: 13px;
+  --font-size-small: 11px;
+  --border-radius: 4px;
+}
+
+.App-dark {
+  --background-color: rgba(43, 45, 48, 1);
+  --user-background-color: rgba(33, 33, 33, 1);
+  --text-color: rgba(214, 214, 221, 1);
+  --border-color: rgba(206, 208, 214, 1); /* 206, 208, 214, 1*/
+  --dark-border-color: rgba(56, 56, 56, 1);
+  --font-size: 13px;
+  --font-size-small: 11px;
+  --border-radius: 4px;
+}
+
+/* 全局滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px; /* 滚动条宽度 */
+  height: 8px; /* 横向滚动条高度 */
+  background-color: transparent; /* 确保背景透明 */
+}
+
+/* 默认状态下隐藏滚动条 */
+::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+/* 鼠标悬浮时显示滚动条 */
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--dark-border-color); /* 滚动条颜色 */
+  border-radius: 4px;
+}
+
+/* 滚动条轨道 */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 鼠标悬浮在滚动条上的样式 */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-color); /* 悬浮时稍微变亮 */
 }
 
 .App-logo {
