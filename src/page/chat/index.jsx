@@ -3,14 +3,8 @@ import "./index.less";
 import { Button, message } from "antd";
 import TextArea from "antd/es/input/TextArea";
 import { CopyOutlined, CloseOutlined } from "@ant-design/icons";
+import { handleCopyMessage, detectIfCode } from "../../utils";
 import {
-  handleCopyMessage,
-  detectIfCode,
-  detectLanguage,
-  generateTraceId
-} from "../../utils";
-import {
-  sendChatDataTest,
   clearChatDatas,
   userHistoryDataClient,
   sendHTTPChat
@@ -32,7 +26,6 @@ const Chat = () => {
   // const [inputIsTop, setInputIsTop] = useState(false); //有对话记录的清空下，输入框是否置顶
   const [pastedCodeData, setPastedCodeData] = useState(""); // 粘贴的代码数据
   const [isCollectingCode, setIsCollectingCode] = useState(false); // 是否正在收集代码
-  // const [currentCodeBlock, setCurrentCodeBlock] = useState(""); // 当前收集的代码块，每次处理完后清除
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false); // 是否正在加载 prompt 上下文，适用于最初加载和后续添加新代码快
 
   // 当前对话上下文收集统计到的代码块集合
@@ -43,7 +36,7 @@ const Chat = () => {
     code: ""
   }); //当前输入框内展示的代码块
 
-  const codeBuffer = useRef(new CodeBuffer(generateTraceId()));
+  const codeBuffer = useRef(new CodeBuffer());
 
   // --------------------------------------------------------
   // 输入框相关的函数
@@ -162,6 +155,7 @@ const Chat = () => {
         if (chunk?.choices[0]?.finish_reason === "stop") {
           const result = codeBuffer.current.flush();
           console.log("resultStop", result, content, currentData);
+          debugger;
         }
         // console.log("result", result, content, currentData);
         if (result) {
@@ -197,11 +191,11 @@ const Chat = () => {
               return { ...prevData, message: newMessage }; // 这里需要返回新的状态
             });
             // 处理代码
-            console.log(
-              "currentCodeBlockListRef",
-              currentCodeBlockListRef,
-              currentCodeBlockListRef.current[0]?.traceId === result.traceId
-            );
+            // console.log(
+            //   "currentCodeBlockListRef",
+            //   currentCodeBlockListRef,
+            //   currentCodeBlockListRef.current[0]?.traceId === result.traceId
+            // );
 
             const existingBlock = currentCodeBlockListRef.current.find(
               (item) => item.traceId === nowTraceId
@@ -275,7 +269,7 @@ const Chat = () => {
         </span>
       );
     }
-    console.log("content", content, currentCodeBlockList);
+    // console.log("content", content, currentCodeBlockList);
     return content.map((item, index) => {
       if (item.type === "code") {
         return (

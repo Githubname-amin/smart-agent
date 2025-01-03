@@ -39,20 +39,6 @@ export const detectIfCode = (text) => {
 
   return codeIndicators.some((indicator) => indicator.test(text));
 };
-
-// 检测是否是代码块的开始
-export const isCodeBlockStart = (content) => {
-  return content.includes("```");
-};
-
-// 检测代码块的语言，先识别JavaScript
-export const detectLanguage = (content) => {
-  const match = content.match(/```(\w+)?/);
-  console.log("当前语言", match);
-
-  return match ? match[1] || "javascript" : "javascript";
-};
-
 /**
  * 生成traceId
  */

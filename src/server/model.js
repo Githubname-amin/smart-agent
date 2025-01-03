@@ -12,29 +12,6 @@ const openai = new OpenAI({
   baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 });
 
-// export const sendMessage = async (currentMessage) => {
-//   try {
-//     const response = await axios.post(
-//       "http://localhost:6688/api/test_chat_ali",
-//       {
-//         messages: {
-//           role: "user",
-//           content: currentMessage
-//         },
-//         context: "这是上下文，我们规定每次交谈的最初一个字是 哦"
-//       },
-//       {
-//         headers: {
-//           "Content-Type": "application/json"
-//         }
-//       }
-//     );
-//     console.log("response", response);
-//   } catch (error) {
-//     console.error("Error sending message:", error);
-//   }
-// };
-
 class userHistoryDatas {
   constructor(userTraceId) {
     this.userTraceId = userTraceId; // 用户traceId，用来记录消息历史
@@ -98,186 +75,73 @@ export const sendHTTPChat = async function* (currentChatData) {
     content: currentChatData
   });
   try {
-    const data = {
+    // const data = {
+    //   model: "qwen-turbo",
+    //   input: {
+    //     messages: [...userHistoryDataClient.getChatDatas()]
+    //   },
+    //   parameters: {
+    //     stream: true,
+    //     incremental_output: true
+    //   }
+    // };
+    // console.log("data???", data);
+    const nowData = {
       model: "qwen-turbo",
-      input: {
-        messages: [...userHistoryDataClient.getChatDatas()]
-      },
-      parameters: {
-        stream: true,
-        incremental_output: true
-      }
+      messages: [...userHistoryDataClient.getChatDatas()],
+      stream: true
     };
-    console.log("data???", data);
-    let response;
-    // if (isIntelliJEnvironment) {
-    //   response = await axios.post(
-    //     "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-    //     data,
-    //     {
-    //       headers: {
-    //         "Content-Type": "application/json",
-    //         "X-DashScope-SSE": "enable",
-    //         Authorization: "Bearer " + ALI_CONFIG.apiKey
-    //       }
-    //     }
-    //   );
-    //   console.log("response，在idea", response);
-    // } else {
-    //   response = await axios.post("http://localhost:3021/api/chat", data, {
-    //     headers: {
-    //       "Content-Type": "application/json"
-    //     }
-    //   });
-    //   console.log("response，在本地", response);
-    //   if (!response && response?.status !== 200) {
-    //     throw new Error("请求失败");
-    //   }
 
-    //   const reader = response.body.getReader();
-    //   const decoder = new TextDecoder();
-    //   let buffer = "";
-
-    //   try {
-    //     while (true) {
-    //       const { value, done } = await reader.read();
-    //       console.log("Stream chunk received:", !!value, done); // 调试日志
-
-    //       if (done) break;
-
-    //       buffer += decoder.decode(value, { stream: true });
-    //       const lines = buffer.split("\n");
-
-    //       // 保留最后一个可能不完整的行
-    //       buffer = lines.pop() || "";
-    //       console.log("lines", lines);
-    //       for (const line of lines) {
-    //         console.log("line11", line);
-    //         if (line.trim() && line.startsWith("data:")) {
-    //           try {
-    //             const jsonStr = line.replace(/^data:\s*/, "").trim();
-    //             if (jsonStr) {
-    //               const parsedData = JSON.parse(jsonStr);
-    //               console.log("Parsed data:", parsedData); // 调试日志
-    //               yield parsedData;
-    //             }
-    //           } catch (e) {
-    //             console.warn("Failed to parse line:", line, e);
-    //           }
-    //         }
-    //       }
-    //     }
-    //   } finally {
-    //     reader.releaseLock();
-    //   }
-    // }
-    if (false) {
-      const nowData = {
-        model: "qwen-turbo",
-        messages: [...userHistoryDataClient.getChatDatas()],
-        stream: true
-      };
-      response = await axios.post(
+    try {
+      const response = await fetch(
         "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-        nowData,
         {
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer sk-f3aa6b3f9ab74a41a39656b162155f9b`,
-            Accept: "text/event-stream", //允许SSE
+            Accept: "text/event-stream",
             "X-DashScope-SSE": "enable"
           },
-          responseType: "stream", // 设置响应类型为流
-          onDownloadProgress: (progressEvent) => {
-            const chunk = progressEvent.event.target.response;
-            console.log("chunk", chunk);
-            if (chunk) {
-              // 处理每个数据块
-              const lines = chunk.split("\n");
-              console.log("lines", lines);
-              lines.forEach((line) => {
-                if (line.trim() && line.startsWith("data:")) {
-                  try {
-                    const jsonStr = line.replace(/^data:\s*/, "").trim();
-                    if (jsonStr) {
-                      const parsedData = JSON.parse(jsonStr);
-                      console.log("Received chunk:", parsedData);
-                      // 这里可以处理每个数据块
-                      // 例如：更新UI显示内容
-                      if (parsedData.choices?.[0]?.delta?.content) {
-                        const content = parsedData.choices[0].delta.content;
-                        // 处理内容，例如追加到现有文本
-                        console.log("Content chunk:", content);
-                      }
-                    }
-                  } catch (e) {
-                    console.warn("Failed to parse SSE data:", e);
-                  }
-                }
-              });
-            }
-          }
+          body: JSON.stringify(nowData)
         }
       );
-      console.log("response?????????", response);
-    } else {
-      const nowData = {
-        model: "qwen-turbo",
-        messages: [...userHistoryDataClient.getChatDatas()],
-        stream: true
-      };
 
-      try {
-        const response = await fetch(
-          "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer sk-f3aa6b3f9ab74a41a39656b162155f9b`,
-              Accept: "text/event-stream",
-              "X-DashScope-SSE": "enable"
-            },
-            body: JSON.stringify(nowData)
-          }
-        );
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+      const reader = response.body.getReader(); //转变为 ReadableStreamDefaultReader 类型，获取流
+      const decoder = new TextDecoder();
+      let buffer = "";
+      console.log("reader", reader);
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
 
-        const reader = response.body.getReader(); //转变为 ReadableStreamDefaultReader 类型，获取流
-        const decoder = new TextDecoder();
-        let buffer = "";
-        console.log("reader", reader);
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // 保留未完成的行
-          // console.log("lines", lines);
-          for (const line of lines) {
-            if (line.trim() && line.startsWith("data:")) {
-              // console.log("line", line);
-              try {
-                const jsonStr = line.replace(/^data:\s*/, "").trim();
-                if (jsonStr) {
-                  const parsedData = JSON.parse(jsonStr);
-                  // 使用 yield 逐个返回数据
-                  yield parsedData;
-                }
-              } catch (e) {
-                console.warn("Failed to parse line:", line, e);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // 保留未完成的行
+        // console.log("lines", lines);
+        for (const line of lines) {
+          if (line.trim() && line.startsWith("data:")) {
+            // console.log("line", line);
+            try {
+              const jsonStr = line.replace(/^data:\s*/, "").trim();
+              if (jsonStr) {
+                const parsedData = JSON.parse(jsonStr);
+                // 使用 yield 逐个返回数据
+                yield parsedData;
               }
+            } catch (e) {
+              console.warn("Failed to parse line:", line, e);
             }
           }
         }
-      } catch (error) {
-        console.error("Stream error:", error);
-        throw error;
       }
+    } catch (error) {
+      console.error("Stream error:", error);
+      throw error;
     }
   } catch (error) {
     console.error("Error sending message:", error);

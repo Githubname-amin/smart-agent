@@ -53,23 +53,17 @@ class CodeBlock {
 }
 
 export class CodeBuffer {
-  constructor(codeTraceId, maxBufferLength = 0) {
-    this.codeTraceId = codeTraceId; // 当前代码块的traceId
-    this.maxBufferLength = maxBufferLength;
-    this.buffer = ""; // 主缓冲区
-    this.isInCodeBlock = false; // 是否在代码块内
-    this.currentLanguage = null; // 当前代码块的语言
-    this.codeContent = ""; // 当前代码块的内容
-    this.textContent = ""; // 普通文本内容
-
+  constructor(maxBufferLength = 0) {
+    this.codeTraceId = null; // 当前代码块的traceId
+    this.maxBufferLength = maxBufferLength; //当前预处理缓冲池的最大格式，当前关闭了，因为最后如果以代码结尾需要特殊处理。可开启，然后稍微改造flush即可
     // 滑动窗口相关
     this.slidingWindow = ""; // 滑动窗口
+    this.textContent = ""; // 普通文本内容
     this.windowState = {
       language: null,
       state: "", // TEXT CODE_START CODE CODE_END
       chunkCount: 0
     };
-    this.codeQueue = "";
     this.specialChars = {
       inlineCode: ["`"],
       mathSymbol: ["+", "-", "*", "/"]
@@ -77,75 +71,6 @@ export class CodeBuffer {
     // 代码相关
     this.nowCodeBlock = null;
     this.codeHistory = [];
-    // this.initCodeBuffer();
-  }
-  // 初始化代码缓冲池
-  // initCodeBuffer() {
-  //   // 初始化一个代码块
-  //   this.codeTraceId = generateTraceId();
-  //   this.nowCodeBlock = new CodeBlock(this.codeTraceId);
-  //   this.codeHistory.push(this.nowCodeBlock);
-  // }
-
-  // 处理新的内容块
-  process(chunk) {
-    this.buffer += chunk;
-    console.log("this.buffer", this.buffer);
-    // 查找完整的代码块标记
-    const startMatch = this.buffer.match(/```(\w+)?/);
-    const endMatch = this.buffer.match(/```\n?/g);
-
-    // 如果找到开始标记且不在代码块中
-    if (startMatch && !this.isInCodeBlock) {
-      console.log("startMatch", startMatch);
-      this.currentLanguage = startMatch[1] || "javascript";
-      // 如果当前的开始云分号是在上一个chunk而语言类型在下一个分号，则需要处理
-      this.isInCodeBlock = true;
-      // 将开始标记之前的内容添加到文本内容
-      this.textContent += this.buffer.slice(0, startMatch.index);
-      // 更新缓冲区
-      this.buffer = this.buffer.slice(startMatch.index + startMatch[0].length);
-      return {
-        type: "text",
-        content: this.textContent
-      };
-    }
-
-    // 如果在代码块中且找到结束标记
-    if (this.isInCodeBlock && endMatch) {
-      const endIndex = this.buffer.indexOf("```");
-
-      // 收集代码内容
-      this.codeContent += this.buffer.slice(0, endIndex);
-      // 重置状态
-      this.isInCodeBlock = false;
-      const code = this.codeContent;
-      this.codeContent = "";
-      // 更新缓冲区
-      this.buffer = this.buffer.slice(endIndex + 3);
-      return {
-        type: "code",
-        language: this.currentLanguage,
-        content: code
-      };
-    }
-
-    // 如果在代码块中
-    if (this.isInCodeBlock) {
-      this.codeContent += this.buffer;
-      this.buffer = "";
-      return null; // 继续收集
-    }
-
-    // 普通文本处理
-    this.textContent = this.buffer;
-    this.buffer = "";
-    // 如果是文本换行，需要打特殊标记
-    return {
-      type: "text",
-      isNewLine: !this.isInCodeBlock,
-      content: this.textContent
-    };
   }
 
   // 使用滑动窗口实现字符处理
@@ -166,7 +91,6 @@ export class CodeBuffer {
     // 处理了一段时间后，将部分字符输出
     if (result?.type === "code") {
       // 清空记录的代码
-      // this.codeQueue = "";
       this.slidingWindow = "";
       this.windowState.chunkCount = 0;
     } else if (result?.type === "text") {
@@ -211,9 +135,7 @@ export class CodeBuffer {
       this.nowCodeBlock.addCode(
         this.slidingWindow.slice(startMatch.index + startMatch[0].length)
       );
-      // this.codeQueue += this.slidingWindow.slice(
-      //   startMatch.index + startMatch[0].length
-      // );
+
       return {
         type: "text",
         content: this.textContent
@@ -231,7 +153,6 @@ export class CodeBuffer {
       const endIndex = this.slidingWindow.indexOf("```");
       this.nowCodeBlock.addCode(this.slidingWindow.slice(0, endIndex));
 
-      // this.codeQueue += this.slidingWindow.slice(0, endIndex);
       // 可能分号符后面存在文案,那么记录文案
       const afterCode = this.slidingWindow.slice(endIndex + 3);
       if (afterCode) {
@@ -269,11 +190,10 @@ export class CodeBuffer {
 
   // 清空缓冲区
   flush() {
-    if (this.windowState.chunkCount < this.maxBufferLength) {
-      const result = this.processWindowAction();
-     
-
-    }
+    // if (this.windowState.chunkCount < this.maxBufferLength) {
+    //  这里去做缓冲区的扩容
+    //   const result = this.processWindowAction();
+    // }
     // 如果当前代码没干净，情况出现在代码块结束对话的情况
     if (this.nowCodeBlock.nowCode) {
       const nowResultCode = this.nowCodeBlock.fastFlush();
@@ -290,45 +210,26 @@ export class CodeBuffer {
         content: this.slidingWindow + this.textContent
       };
     }
-    // if (this.codeQueue) {
-    //   this.reset();
-    //   const resultCode = remaining + this.codeQueue;
-    //   return {
-    //     type: "code",
-    //     content: resultCode
-    //   };
-    // } else {
-    //   this.reset();
-    //   return {
-    //     type: "text",
-    //     content: remaining
-    //   };
-    // }
   }
 
   // 重置所有状态
   reset() {
-    this.buffer = "";
     this.slidingWindow = "";
     this.windowState = {
       language: null,
       state: "", // TEXT CODE_START CODE CODE_END
       chunkCount: 0
     };
-    this.codeQueue = "";
     this.codeTraceId = null;
-    this.isInCodeBlock = false;
-    this.currentLanguage = null;
-    this.codeContent = "";
     this.textContent = "";
   }
 
   // 检查不完整的云括号结尾
   checkIncompleteBackticks(text) {
     // 如果当前内容包含云括号，我就打印，检查一下
-    if (text.includes("`")) {
-      console.log("检查云括号", text);
-    }
+    // if (text.includes("`")) {
+    //   console.log("检查云括号", text);
+    // }
     // 检查是否以1-3个反引号结尾
     const backtickMatch = text.match(/`{1,3}$/);
     if (backtickMatch) {
