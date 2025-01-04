@@ -270,7 +270,6 @@ export class CodeBuffer {
     //   const result = this.processWindowAction();
     // }
     // 如果当前代码没干净，情况出现在代码块结束对话的情况
-    debugger;
     if (this.nowCodeBlock.nowCode) {
       const nowResultCode = this.nowCodeBlock.endFlush();
       return {

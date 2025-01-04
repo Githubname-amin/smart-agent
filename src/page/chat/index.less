@@ -19,12 +19,19 @@
 }
 
 // 聊天框
+.chat-footer-action-box {
+  display: flex;
+  flex-direction: column;
+  background: var(--background-color);
+  z-index: 10;
+}
 .chat-input-component {
   flex-direction: column;
   flex: 1;
   display: flex;
   gap: 4px;
-  padding: 6px;
+  padding: 6px 6px 0 6px;
+  margin-bottom: -1px;
   border: 1px solid var(--dark-border-color);
   background-color: var(--background-color);
   color: var(--text-color);
@@ -108,6 +115,31 @@
       .css-dev-only-do-not-override-1kf000u
     ).ant-input-outlined:focus-within {
     box-shadow: none;
+  }
+
+  .closeIconShow {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: rgba(214, 214, 221, 1);
+  }
+  .closeExpanded {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    // padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    color: rgba(214, 214, 221, 1);
   }
 }
 .chat-input-component-title {
@@ -194,8 +226,6 @@
 
 // 聊天框的代码块
 .chat-input-component-title-code-box {
-  max-height: 200px;
-  overflow: hidden;
   position: relative;
 }
 
@@ -215,7 +245,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: 300px;
+  // padding-bottom: 300px;
 }
 
 .inputContainer {

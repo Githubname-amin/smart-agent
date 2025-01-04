@@ -2,7 +2,12 @@ import React, { useState, useEffect, useRef } from "react";
 import "./index.less";
 import { Button, message } from "antd";
 import TextArea from "antd/es/input/TextArea";
-import { CopyOutlined, CloseOutlined } from "@ant-design/icons";
+import {
+  CopyOutlined,
+  CloseOutlined,
+  DownOutlined,
+  UpOutlined
+} from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode } from "../../utils";
 import { userHistoryDataClient, sendHTTPChat } from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -26,13 +31,19 @@ const Chat = () => {
   // 当前对话上下文收集统计到的代码块集合
   const [currentCodeBlockList, setCurrentCodeBlockList] = useState([]);
   const currentCodeBlockListRef = useRef([]);
+
+  // 当前对话上下文收集的文本块
+  const currentMarkdownListRef = useRef([]);
+  const [currentMarkdownString, setCurrentMarkdownString] = useState([]);
+
+  // 输入框相关
   const [currentSelectCode, setCurrentSelectCode] = useState({
     traceId: "",
     code: ""
   }); //当前输入框内展示的代码块
-  const currentMarkdownListRef = useRef([]);
-  const [currentMarkdownString, setCurrentMarkdownString] = useState([]);
+  const [isExpanded, setIsExpanded] = useState(false);
 
+  // 其他工具
   const codeBuffer = useRef(new CodeBuffer(generateTraceId()));
   const historyChatDatas = useRef("");
 
@@ -165,7 +176,7 @@ const Chat = () => {
             result,
             resultAll,
             content,
-            currentData,
+            currentData
             // userHistoryDataClient
             // historyChatDatas
           );
@@ -481,50 +492,71 @@ const Chat = () => {
               })}
           </div>
         </div>
-        <div className="chat-input-component-title-code-box">
+        <div>
           {/* 展示当前选中任务的代码 */}
           {currentSelectCode && currentSelectCode?.code && (
-            <div
-              className="chat-input-component-title-traceId-code"
-              style={{
-                maxHeight: currentSelectCode?.code ? "none" : "200px"
-              }}
-            >
-              <SyntaxHighlighter
-                language={currentSelectCode?.language}
-                style={vscDarkPlus}
+            <div className="chat-input-component-title-code-box">
+              <div
+                className="chat-input-component-title-traceId-code"
+                style={{
+                  maxHeight: isExpanded ? "none" : "200px"
+                }}
               >
-                {currentSelectCode?.code}
-              </SyntaxHighlighter>
+                <SyntaxHighlighter
+                  language={currentSelectCode?.language}
+                  style={vscDarkPlus}
+                >
+                  {currentSelectCode?.code}
+                </SyntaxHighlighter>
+              </div>
+              {!isExpanded && (
+                <div
+                  onClick={() => setIsExpanded(true)}
+                  className="closeIconShow"
+                  style={{}}
+                >
+                  <DownOutlined />
+                </div>
+              )}
+              {isExpanded && (
+                <div
+                  onClick={() => setIsExpanded(false)}
+                  className="closeExpanded"
+                >
+                  <UpOutlined />
+                </div>
+              )}
             </div>
           )}
         </div>
-        <TextArea
-          autoSize={{ minRows: isTop ? 3 : 2, maxRows: 6 }}
-          className="chat-input-textarea"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          // onCompositionStart={() => setIsComposing(true)}
-          // onCompositionEnd={() => setIsComposing(false)}
-          onPaste={handleOnPaste}
-          onPressEnter={(e) => {
-            if (e.shiftKey) {
-              // 如果按下了 Shift 键，不触发发送
-              return;
-            }
-            handleSendMessage(isTop);
-          }}
-          placeholder="输入消息按Enter发送，Shift+Enter换行"
-          disabled={isComposing}
-        />
-        <div className="chat-action-box">
-          <div></div>
-          <Button
-            className="chat-submit-btn"
-            onClick={() => handleSendMessage(isTop)}
-          >
-            {isComposing ? "停止" : "发送 "}
-          </Button>
+        <div className="chat-footer-action-box">
+          <TextArea
+            autoSize={{ minRows: isTop ? 3 : 2, maxRows: 6 }}
+            className="chat-input-textarea"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            // onCompositionStart={() => setIsComposing(true)}
+            // onCompositionEnd={() => setIsComposing(false)}
+            onPaste={handleOnPaste}
+            onPressEnter={(e) => {
+              if (e.shiftKey) {
+                // 如果按下了 Shift 键，不触发发送
+                return;
+              }
+              handleSendMessage(isTop);
+            }}
+            placeholder="输入消息按Enter发送，Shift+Enter换行"
+            disabled={isComposing}
+          />
+          <div className="chat-action-box">
+            <div></div>
+            <Button
+              className="chat-submit-btn"
+              onClick={() => handleSendMessage(isTop)}
+            >
+              {isComposing ? "停止" : "发送 "}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -541,7 +573,10 @@ const Chat = () => {
               {!currentData?.message?.length ? (
                 <div>{InputComponent("top")}</div>
               ) : (
-                <div className="chat-content-item-content">
+                <div
+                  className="chat-content-item-content"
+                  style={{ paddingBottom: isExpanded ? 600 : 300 }}
+                >
                   {currentData?.message.map((item, index) => (
                     <div key={index}>
                       <div
