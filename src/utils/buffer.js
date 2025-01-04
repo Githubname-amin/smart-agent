@@ -36,7 +36,8 @@ class CodeBlock {
   // 清空当前代码快,返回剩下全部数据
   endFlush() {
     const resultCode = {
-      code: this.code,
+      code: this.nowCode,
+      allCode: this.code,
       language: this.language,
       traceId: this.codeTraceId
     };
@@ -52,8 +53,55 @@ class CodeBlock {
   }
 }
 
+class TextBlock {
+  constructor(textTraceId) {
+    this.textTraceId = textTraceId; // 当前文本块的traceId
+    this.text = ""; // 整个文本块的内容,用来最终返回,做备份,或者是后续插入代码
+    this.nowText = ""; // 当前文本块的内容,用来做流式展示
+  }
+
+  // 添加文本块
+  addText(text) {
+    this.text += text;
+    this.nowText += text;
+  }
+
+  // 获取文本块
+  getText() {
+    return this.text;
+  }
+
+  // 过程快照，用作流式返回
+  fastFlush() {
+    const resultText = {
+      text: this.nowText,
+      traceId: this.textTraceId
+    };
+    this.nowText = "";
+    return resultText;
+  }
+
+  // 最终快照，会返回整个文本块的信息
+  // 清空当前文本块,返回剩下全部数据
+  endFlush() {
+    const resultText = {
+      allText: this.text,
+      text: this.nowText,
+      traceId: this.textTraceId
+    };
+    this.resetTextBlock();
+    return resultText;
+  }
+
+  // 重置当前文本块
+  resetTextBlock() {
+    this.text = "";
+    this.textTraceId = "";
+  }
+}
+
 export class CodeBuffer {
-  constructor(maxBufferLength = 0) {
+  constructor(textTraceId, maxBufferLength = 0) {
     this.codeTraceId = null; // 当前代码块的traceId
     this.maxBufferLength = maxBufferLength; //当前预处理缓冲池的最大格式，当前关闭了，因为最后如果以代码结尾需要特殊处理。可开启，然后稍微改造flush即可
     // 滑动窗口相关
@@ -71,6 +119,10 @@ export class CodeBuffer {
     // 代码相关
     this.nowCodeBlock = null;
     this.codeHistory = [];
+    // 文本相关
+    this.textTraceId = textTraceId;
+    this.nowTextBlock = null;
+    this.textHistory = [];
   }
 
   // 使用滑动窗口实现字符处理
@@ -128,17 +180,23 @@ export class CodeBuffer {
         return null;
       }
       this.windowState.state = "CODE_START";
-      this.textContent += this.slidingWindow.slice(0, startMatch.index);
       this.nowCodeBlock.language = startMatch[1] || "java";
-      // this.windowState.language = startMatch[1] || "java";
       // 最初的代码快
       this.nowCodeBlock.addCode(
         this.slidingWindow.slice(startMatch.index + startMatch[0].length)
       );
 
+      // 剩余文本相关处理
+      this.nowTextBlock.addText(this.slidingWindow.slice(0, startMatch.index));
+      const nowTextResult = this.nowTextBlock.fastFlush();
+      // 本次文本块结束
+      const endTextResult = this.nowTextBlock.endFlush();
+      this.nowTextBlock = null;
+      this.textTraceId = null;
+      this.textHistory.push(endTextResult);
       return {
         type: "text",
-        content: this.textContent
+        ...nowTextResult
       };
     }
 
@@ -156,7 +214,10 @@ export class CodeBuffer {
       // 可能分号符后面存在文案,那么记录文案
       const afterCode = this.slidingWindow.slice(endIndex + 3);
       if (afterCode) {
-        this.textContent += afterCode;
+        // 代码块结束转文本块，重新创建一个
+        this.textTraceId = generateTraceId();
+        this.nowTextBlock = new TextBlock(this.textTraceId);
+        this.nowTextBlock.addText(afterCode);
       }
       // 字符串式赋值，断开引用
       const nowResultCode = this.nowCodeBlock.fastFlush();
@@ -181,10 +242,24 @@ export class CodeBuffer {
     }
 
     // 普通文本区域
-    this.textContent += this.slidingWindow;
+    // 默认创建一个文本编号，当出现其他内容的时候，都会触发文本编号的变更。如果没有其他内容，那么全文共用一个
+    if (this.textTraceId) {
+      // 存在文本编号不存在块，则是在其他地方清除了上一个块，那么创建一个文本块
+      if (!this.nowTextBlock) {
+        // 这是第一次创建
+        this.nowTextBlock = new TextBlock(this.textTraceId);
+      }
+      this.nowTextBlock.addText(this.slidingWindow);
+    } else {
+      // 这是后续被清除后的创建
+      this.nowTextBlock = new TextBlock(generateTraceId());
+      this.nowTextBlock.addText(this.slidingWindow);
+      this.textTraceId = this.nowTextBlock.textTraceId;
+    }
+    // this.textContent += this.slidingWindow;
     return {
       type: "text",
-      content: this.textContent
+      ...this.nowTextBlock.fastFlush()
     };
   }
 
@@ -195,19 +270,36 @@ export class CodeBuffer {
     //   const result = this.processWindowAction();
     // }
     // 如果当前代码没干净，情况出现在代码块结束对话的情况
+    debugger;
     if (this.nowCodeBlock.nowCode) {
-      const nowResultCode = this.nowCodeBlock.fastFlush();
+      const nowResultCode = this.nowCodeBlock.endFlush();
       return {
         type: "code",
         totalCodeBuffer: this.codeHistory,
+        totalTextBuffer: this.textHistory,
         ...nowResultCode
       };
-    } else {
+    } else if (this.nowTextBlock.nowText) {
+      // 还有剩余，按说没有，最后会走下面的else
+      const nowTextResult = this.nowTextBlock.endFlush();
+      this.textHistory.push(nowTextResult);
       this.reset();
       return {
         type: "text",
         totalCodeBuffer: this.codeHistory,
-        content: this.slidingWindow + this.textContent
+        totalTextBuffer: this.textHistory,
+        ...nowTextResult
+      };
+    } else {
+      // 处理的很干净，那么返回想要的数据
+      // console.log("最后查看", this.textHistory, this.nowTextBlock);
+      const endTextResult = this.nowTextBlock.endFlush();
+      this.textHistory.push(endTextResult);
+      this.reset();
+      return {
+        type: "all",
+        totalCodeBuffer: this.codeHistory,
+        totalTextBuffer: this.textHistory
       };
     }
   }
@@ -221,6 +313,9 @@ export class CodeBuffer {
       chunkCount: 0
     };
     this.codeTraceId = null;
+    this.nowCodeBlock = null;
+    this.textTraceId = null;
+    this.nowTextBlock = null;
     this.textContent = "";
   }
 

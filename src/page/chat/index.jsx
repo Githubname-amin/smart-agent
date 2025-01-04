@@ -7,11 +7,13 @@ import { handleCopyMessage, detectIfCode } from "../../utils";
 import { userHistoryDataClient, sendHTTPChat } from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import ReactMarkdown from "react-markdown";
+import { generateTraceId } from "../../utils";
+
 import { CodeBuffer } from "../../utils/buffer";
 import {
   websocketClient,
   WebSocketStatus,
-  pluginParams,
   registerApiCallbackFn
 } from "../../server/websocket";
 const Chat = () => {
@@ -28,8 +30,10 @@ const Chat = () => {
     traceId: "",
     code: ""
   }); //当前输入框内展示的代码块
+  const currentMarkdownListRef = useRef([]);
+  const [currentMarkdownString, setCurrentMarkdownString] = useState([]);
 
-  const codeBuffer = useRef(new CodeBuffer());
+  const codeBuffer = useRef(new CodeBuffer(generateTraceId()));
   const historyChatDatas = useRef("");
 
   // --------------------------------------------------------
@@ -151,7 +155,7 @@ const Chat = () => {
         historyChatDatas.current += content;
         const result = await codeBuffer.current.processWindow(content);
         if (chunk?.choices[0]?.finish_reason === "stop") {
-          const result = codeBuffer.current.flush();
+          const resultAll = codeBuffer.current.flush();
           userHistoryDataClient.addChatData({
             role: "assistant",
             content: historyChatDatas.current
@@ -159,8 +163,10 @@ const Chat = () => {
           console.log(
             "resultStop",
             result,
+            resultAll,
             content,
-            currentData
+            currentData,
+            // userHistoryDataClient
             // historyChatDatas
           );
           // debugger;
@@ -168,14 +174,51 @@ const Chat = () => {
         // console.log("result", result, content, currentData);
         if (result) {
           if (result.type === "text") {
+            const nowTextTraceId = result.traceId;
             setCurrentData((prevData) => {
               const newMessage = [...prevData.message];
               const lastMessage = newMessage[newMessage.length - 1];
-              if (lastMessage.role === "assistant") {
-                lastMessage.content.push(result);
+              if (
+                lastMessage.role === "assistant" &&
+                !lastMessage.content.find(
+                  (item) =>
+                    item.type === "text" && item.traceId === nowTextTraceId
+                )
+              ) {
+                lastMessage.content.push({
+                  type: "text",
+                  traceId: nowTextTraceId,
+                  content: ""
+                });
               }
               return { ...prevData, message: newMessage };
             });
+
+            const existText = currentMarkdownListRef.current.find(
+              (item) => item.traceId === nowTextTraceId
+            );
+            if (existText) {
+              const currentText = existText.text;
+              const newText = currentText + result.text;
+              const newMessage = currentMarkdownListRef.current.map((item) =>
+                item.traceId === nowTextTraceId
+                  ? { ...item, text: newText }
+                  : item
+              );
+              currentMarkdownListRef.current = newMessage;
+              setCurrentMarkdownString(newMessage);
+            } else {
+              // 初次录入
+              const newList = [
+                ...currentMarkdownListRef.current,
+                {
+                  traceId: nowTextTraceId,
+                  text: result.text
+                }
+              ];
+              currentMarkdownListRef.current = newList;
+              setCurrentMarkdownString(newList);
+            }
           }
           if (result.type === "code") {
             const nowTraceId = result.traceId;
@@ -270,14 +313,21 @@ const Chat = () => {
   // 组件处理相关
   // 处理渲染问题
   const renderMessageContent = (content) => {
+    // console.log(
+    //   "content",
+    //   currentData,
+    //   content,
+    //   currentCodeBlockList,
+    //   currentMarkdownString
+    // );
     if (typeof content === "string") {
       return (
         <span className="chat-content-item-content-user-text-content">
+          {/* 这里是对用户字符串进行展示 */}
           {content}
         </span>
       );
     }
-    // console.log("content", content, currentCodeBlockList);
     return content.map((item, index) => {
       if (item.type === "code") {
         return (
@@ -322,7 +372,18 @@ const Chat = () => {
           </div>
         );
       } else {
-        return <span key={`text-${index}`}>{item.content}</span>;
+        return (
+          <span key={`text-${item.traceId}`}>
+            <ReactMarkdown>
+              {
+                currentMarkdownString.find(
+                  (markdownStringItem) =>
+                    markdownStringItem.traceId === item.traceId
+                )?.text
+              }
+            </ReactMarkdown>
+          </span>
+        );
       }
     });
   };
@@ -495,12 +556,7 @@ const Chat = () => {
                         </div>
                         <div className="chat-content-item-content-user-text">
                           <div className="chat-content-item-content-user-text-content">
-                            {/* <ReactMarkdown>{messageRender(item)}</ReactMarkdown> */}
-                            {/* <ReactMarkdown>{item.content}</ReactMarkdown> */}
                             {renderMessageContent(item.content)}
-                            {/* <button onClick={() => console.log(item)}>
-                            点我
-                          </button> */}
                           </div>
                         </div>
                         <div className="chat-content-item-content-time">
