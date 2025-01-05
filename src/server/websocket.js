@@ -140,14 +140,15 @@ class WebSocketClient {
           return;
         }
         const res = this.apiCallbackFns[data.url](this.ws, data);
+        console.log("onMessage的succeed", res);
         // 每次分析完服务端传递过来的数据后，需要返回报文给服务端
-        this.send({
-          type: "responseSuccess",
-          traceId: data.traceId,
-          success: data?.success ?? true,
-          data: data?.data ?? null
-        });
-        return;
+        // this.send({
+        //   type: "responseSuccess",
+        //   traceId: data.traceId,
+        //   success: data?.success ?? true,
+        //   data: data?.data ?? null
+        // });
+        // return;
       }
 
       // 处理响应
@@ -266,27 +267,70 @@ class WebSocketClient {
 
 export const websocketClient = new WebSocketClient();
 // 检查连接状态
+// 接口处理函数，在页面之初注册对应的执行事件
+export function registerApiCallbackFn(url, callback) {
+  websocketClient.apiCallbackFns[url] = callback;
+}
 
-/** 获取想要查询的代码，作为上下文 */
-export async function getSelectCode(url = "/chat/selectCode") {
+// 向外抛出的websocket接口
+/** 前端选中一段代码，传递给服务端，插入到idea的光标处 */
+export async function handleInsertCodeToWeb(url = "chat/insert_code") {
   const request = {
     traceId: "123",
-    message: []
+    data: {
+      code: "java代码"
+    }
   };
   try {
     const response = await websocketClient.sendMessage(url, request);
     console.log("前端获取到代码", response);
+    if (true) {
+      // 考虑是在这里做独特的send，还是走响应拦截器的send
+      // websocketClient.send({
+      //   type: "handleInsertCodeToWebResponseSuccess",
+      //   success: true,
+      //   tracerId: "xxxx"
+      // });
+    }
     return response;
   } catch (error) {
     console.error("获取代码失败", error);
   }
 }
 
-/** 前端申请插入代码到编辑器 */
-export async function insertCodeToEditor(url = "/chat/insertCodeToEditor") {
+/**前端请求服务端，得到一段文件目录，展示选择框，然后选择、暂存，为后续插入文件做准备 */
+export async function handleQueryFileToEditor(url = "/chat/query_directories") {
   const request = {
-    success: true,
-    traceId: "1234",
+    traceId: "1234" //当前请求的traceId
+  };
+  const response = await websocketClient.sendMessage(url, request);
+  console.log(
+    "前端请求服务端，得到一段文件目录，展示选择框，然后选择、暂存，为后续插入文件做准备",
+    response
+  );
+  if (true) {
+    // 考虑是在这里做独特的send，还是走响应拦截器的send
+    websocketClient.send({
+      type: "handleQueryFileToEditorResponseSuccess",
+      success: true,
+      tracerId: "xxxx",
+      data: {
+        directories: [], //所有的文件目录
+        defaultDirectory: "", //默认自动填充的目录
+        defaultFileName: "" //默认自动填充的文件名
+      }
+    });
+  }
+  return response;
+}
+
+/** 前端选中一段代码，传递给服务端，插入到idea的文件中 */
+export async function handleInsertFileToEditor(
+  path = "",
+  url = "/chat/insert_file"
+) {
+  const request = {
+    traceId: "1234", //当前请求的traceId
     data: {
       code: `java
     public class Main {
@@ -296,15 +340,20 @@ export async function insertCodeToEditor(url = "/chat/insertCodeToEditor") {
             System.out.println("两数之和为: " + (a + b));
         }
     }`,
-      message: "处理选择代码逻辑,服务端传递代码来前端"
+      contextTraceId: "1234", // 插件段发起请求的traceId，没有则不传
+      path: "", //保存文件的目录.上面接口供用户选择，选择结果.
+      fileName: "" //保存文件的名称
     }
   };
   const response = await websocketClient.sendMessage(url, request);
-  console.log("前端插入代码到编辑器", response);
+  console.log("前端插入代码到编辑器的文件内", response);
+  if (true) {
+    // 考虑是在这里做独特的send，还是走响应拦截器的send
+    // websocketClient.send({
+    //   type: "handleInsertFileToEditorResponseSuccess",
+    //   success: true,
+    //   tracerId: "xxxx"
+    // });
+  }
   return response;
-}
-
-// 接口处理函数，在页面之初注册对应的执行事件
-export function registerApiCallbackFn(url, callback) {
-  websocketClient.apiCallbackFns[url] = callback;
 }

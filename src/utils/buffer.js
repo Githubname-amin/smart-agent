@@ -270,7 +270,7 @@ export class CodeBuffer {
     //   const result = this.processWindowAction();
     // }
     // 如果当前代码没干净，情况出现在代码块结束对话的情况
-    if (this.nowCodeBlock.nowCode) {
+    if (this.nowCodeBlock?.nowCode) {
       const nowResultCode = this.nowCodeBlock.endFlush();
       return {
         type: "code",
@@ -278,7 +278,7 @@ export class CodeBuffer {
         totalTextBuffer: this.textHistory,
         ...nowResultCode
       };
-    } else if (this.nowTextBlock.nowText) {
+    } else if (this.nowTextBlock?.nowText) {
       // 还有剩余，按说没有，最后会走下面的else
       const nowTextResult = this.nowTextBlock.endFlush();
       this.textHistory.push(nowTextResult);

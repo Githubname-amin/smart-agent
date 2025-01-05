@@ -15,9 +15,16 @@ class userHistoryDatas {
     this.chatDatas = [];
   }
 
-  // 添加消息
+  /**
+   * 添加消息
+   * @param {*消息，包含role,content,type，type分为 activelyAdd,requestAdd,promptAdd} chatData 消息
+   */
   addChatData(chatData) {
-    this.chatDatas.push(chatData);
+    if (Array.isArray(chatData)) {
+      this.chatDatas.push(...chatData);
+    } else {
+      this.chatDatas.push(chatData);
+    }
   }
 
   // 获取消息
@@ -66,15 +73,15 @@ class userHistoryDatas {
 export let userHistoryDataClient = new userHistoryDatas("1234");
 
 // 尝试改造成nodejs的流式响应,但是发现要根据他的字段参数去调整整体逻辑.所有返回确定请求方式
-export const sendHTTPChat = async function* (currentChatData) {
-  console.log("sendHTTPChat", currentChatData);
-  userHistoryDataClient.addChatData({
-    role: "user",
-    content: currentChatData
-  });
+export const sendHTTPChat = async function* () {
+  console.log("sendHTTPChat", userHistoryDataClient.getChatDatas());
+  // userHistoryDataClient.addChatData({
+  //   role: "user",
+  //   content: currentChatData
+  // });
   try {
     const nowData = {
-      model: "qwen-turbo",
+      model: "qwen-plus",
       messages: [...userHistoryDataClient.getChatDatas()],
       stream: true
     };
