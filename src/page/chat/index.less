@@ -23,6 +23,7 @@
   display: flex;
   flex-direction: column;
   background: var(--background-color);
+  padding: 10px 0;
   z-index: 10;
 }
 .chat-input-component {
@@ -31,7 +32,7 @@
   display: flex;
   gap: 4px;
   padding: 6px 6px 0 6px;
-  margin-bottom: -1px;
+  // margin-bottom: -1px;
   border: 1px solid var(--dark-border-color);
   background-color: var(--background-color);
   color: var(--text-color);
@@ -65,6 +66,32 @@
     }
     button:focus-visible {
       outline: none;
+    }
+
+    // 操作区
+    .chat-action-box-model {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+
+      .chat-action-box-model-model {
+        // border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        font-size: 12px;
+        padding: 4px;
+        cursor: pointer;
+        color: var(--text-color);
+        margin-right: 8px;
+      }
+      .chat-action-box-model-image {
+        // border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        font-size: 12px;
+        padding: 4px;
+        cursor: pointer;
+        color: var(--text-color);
+      }
     }
   }
 
@@ -235,7 +262,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  margin: 0 10px 0px 10px;
+  // margin: 0 10px 0px 10px;
   // 底部呈现蒙版的效果，看不到下层内容
   background: rgba(255, 255, 255, 1);
 }

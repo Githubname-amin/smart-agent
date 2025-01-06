@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./index.less";
-import { Button, message } from "antd";
+import { Button, message, Dropdown, Upload } from "antd";
 import TextArea from "antd/es/input/TextArea";
 import {
   CopyOutlined,
   CloseOutlined,
   DownOutlined,
   UpOutlined,
-  QuestionOutlined
+  QuestionOutlined,
+  PictureOutlined
 } from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode } from "../../utils";
 import { userHistoryDataClient, sendHTTPChat } from "../../server/model";
@@ -22,6 +23,7 @@ import {
   WebSocketStatus,
   registerApiCallbackFn
 } from "../../server/websocket";
+
 const Chat = () => {
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
@@ -42,10 +44,37 @@ const Chat = () => {
   const [currentSelectCode, setCurrentSelectCode] = useState();
   const [currentInputContextList, setCurrentInputContextList] = useState([]);
   const [isExpanded, setIsExpanded] = useState(false);
-
+  const [currentModel, setCurrentModel] = useState("qwen-turbo");
   // 其他工具
   const codeBuffer = useRef(new CodeBuffer(generateTraceId()));
   const historyChatDatas = useRef("");
+
+  const modelItems = [
+    {
+      key: "qwen-turbo",
+      label: "qwen-turbo",
+      value: "qwen-turbo",
+      onClick: () => setCurrentModel("qwen-turbo")
+    },
+    {
+      key: "qwen-plus",
+      label: "qwen-plus",
+      value: "qwen-plus",
+      onClick: () => setCurrentModel("qwen-plus")
+    },
+    {
+      key: "qwen-mini",
+      label: "qwen-mini",
+      value: "qwen-mini",
+      onClick: () => setCurrentModel("qwen-mini")
+    },
+    {
+      key: "ollama",
+      label: "ollama",
+      value: "ollama",
+      onClick: () => setCurrentModel("ollama")
+    }
+  ];
 
   // --------------------------------------------------------
   // 输入框相关的函数
@@ -227,17 +256,17 @@ const Chat = () => {
       // 准备本次对话需要的上下文
       const nowChatData = actionContextFn(inputValue);
       userHistoryDataClient.addChatData(nowChatData);
-      const response = await sendHTTPChat();
+      const response = await sendHTTPChat({ model: currentModel });
       console.log("response前端js", response, nowChatData);
 
       // 用for await 来处理流式响应
       // 使用buffer来处理流式响应
       for await (const chunk of response) {
-        const content = chunk.choices[0].delta.content;
+        const content = chunk.content;
         // 需要保存一份纯粹的字符串形式，后续作为chat应答发送给下一次对话
         historyChatDatas.current += content;
         const result = await codeBuffer.current.processWindow(content);
-        if (chunk?.choices[0]?.finish_reason === "stop") {
+        if (chunk?.finish_reason) {
           const resultAll = codeBuffer.current.flush();
           userHistoryDataClient.addChatData({
             // type: "requestAdd",
@@ -553,6 +582,34 @@ const Chat = () => {
     });
   };
 
+  // 处理图片上传(复制粘贴通用)
+  const handleUpload = (file) => {
+    console.log("handleUpload", file);
+    message.warning("开发中~");
+    // try {
+    //   const isImage = file.type.startsWith("image/");
+    //   if (!isImage) {
+    //     message.error("只能上传图片");
+    //     return;
+    //   }
+    //   // 对图片进行大小限制
+    //   const maxSize = 2 * 1024 * 1024; // 2MB
+    //   if (file.size > maxSize) {
+    //     message.error("图片大小不能超过2MB");
+    //     return;
+    //   }
+    //   // 将图片文件转化成base64格式
+    //   const reader = new FileReader();
+    //   reader.readAsDataURL(file);
+    //   reader.onload = () => {
+    //     const imageData = reader.result;
+    //     console.log("imageData", imageData);
+    //   };
+    // } catch (error) {
+    //   console.error("Error uploading image:", error);
+    // }
+  };
+
   //   顶部输入框组件
   const InputComponent = (type) => {
     const isTop = type === "top";
@@ -669,7 +726,28 @@ const Chat = () => {
             disabled={isComposing}
           />
           <div className="chat-action-box">
-            <div></div>
+            <div className="chat-action-box-model">
+              <Dropdown
+                menu={{
+                  items: modelItems
+                }}
+              >
+                <div className="chat-action-box-model-model">
+                  <DownOutlined style={{ marginRight: "4px" }} />
+                  {currentModel}
+                </div>
+              </Dropdown>
+              <Upload
+                beforeUpload={handleUpload}
+                showUploadList={false}
+                accept="image/*"
+              >
+                <div className="chat-action-box-model-image">
+                  <PictureOutlined style={{ marginRight: "4px" }} />
+                  image
+                </div>
+              </Upload>
+            </div>
             <Button
               className="chat-submit-btn"
               onClick={() => handleSendMessage(isTop)}
