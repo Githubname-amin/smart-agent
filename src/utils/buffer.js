@@ -190,7 +190,7 @@ export class CodeBuffer {
       this.nowTextBlock.addText(this.slidingWindow.slice(0, startMatch.index));
       const nowTextResult = this.nowTextBlock.fastFlush();
       // 本次文本块结束
-      const endTextResult = this.nowTextBlock.endFlush();
+      const endTextResult = this.nowTextBlock?.endFlush();
       this.nowTextBlock = null;
       this.textTraceId = null;
       this.textHistory.push(endTextResult);
@@ -220,9 +220,9 @@ export class CodeBuffer {
         this.nowTextBlock.addText(afterCode);
       }
       // 字符串式赋值，断开引用
-      const nowResultCode = this.nowCodeBlock.fastFlush();
+      const nowResultCode = this.nowCodeBlock?.fastFlush();
       // 本次代码块结束
-      const endResultCode = this.nowCodeBlock.endFlush();
+      const endResultCode = this.nowCodeBlock?.endFlush();
       this.codeHistory.push(endResultCode);
 
       return {
@@ -271,7 +271,7 @@ export class CodeBuffer {
     // }
     // 如果当前代码没干净，情况出现在代码块结束对话的情况
     if (this.nowCodeBlock?.nowCode) {
-      const nowResultCode = this.nowCodeBlock.endFlush();
+      const nowResultCode = this.nowCodeBlock?.endFlush();
       return {
         type: "code",
         totalCodeBuffer: this.codeHistory,
@@ -280,7 +280,7 @@ export class CodeBuffer {
       };
     } else if (this.nowTextBlock?.nowText) {
       // 还有剩余，按说没有，最后会走下面的else
-      const nowTextResult = this.nowTextBlock.endFlush();
+      const nowTextResult = this.nowTextBlock?.endFlush();
       this.textHistory.push(nowTextResult);
       this.reset();
       return {
@@ -291,8 +291,8 @@ export class CodeBuffer {
       };
     } else {
       // 处理的很干净，那么返回想要的数据
-      // console.log("最后查看", this.textHistory, this.nowTextBlock);
-      const endTextResult = this.nowTextBlock.endFlush();
+      console.log("最后查看", this.textHistory, this.nowTextBlock);
+      const endTextResult = this.nowTextBlock?.endFlush();
       this.textHistory.push(endTextResult);
       this.reset();
       return {

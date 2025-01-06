@@ -2,6 +2,9 @@
 import { MODEL_CONFIG } from "./config";
 import axios from "axios";
 
+// 添加请求控制器,用来终止流式请求
+let currentController = null;
+
 /**
  * 用户对话历史类，后续展示对话概述，从而定位到聊天历史
  * userTraceId: 用户traceId，用来记录消息历史
@@ -30,6 +33,11 @@ class userHistoryDatas {
   // 获取消息
   getChatDatas() {
     return this.chatDatas;
+  }
+
+  // 中断聊天，删除当前这次无用user
+  stopChat() {
+    this.chatDatas.pop();
   }
 
   // 修改信息
@@ -75,33 +83,42 @@ export let userHistoryDataClient = new userHistoryDatas("1234");
 // 尝试改造成nodejs的流式响应,但是发现要根据他的字段参数去调整整体逻辑.所有返回确定请求方式
 export const sendHTTPChat = async function ({ model }) {
   console.log("sendHTTPChat", userHistoryDataClient.getChatDatas());
-  // userHistoryDataClient.addChatData({
-  //   role: "user",
-  //   content: currentChatData
-  // });
+  currentController = new AbortController();
   try {
     // 根据不同模型，有不同的处理
     switch (model) {
       case "qwen-turbo":
-        return qwenTurbo("qwen-turbo");
+        return qwenTurbo("qwen-turbo", currentController);
       case "qwen-plus":
-        return qwenTurbo("qwen-plus");
+        return qwenTurbo("qwen-plus", currentController);
       case "qwen-mini":
-        return qwenTurbo("qwen-mini");
+        return qwenTurbo("qwen-mini", currentController);
       case "ollama":
-        return ollama();
+        return ollama(currentController);
       default:
         break;
     }
   } catch (error) {
-    console.error("Error sending message:", error);
+    console.error("Error sending message Total:", error);
     throw error;
+  }
+};
+
+// 停止当前正在进行的对话
+export const stopCurrentChat = async function () {
+  if (currentController) {
+    currentController.abort();
+    currentController = null;
+    // 终止成功，清除前面无用的userHistoryDataClient
+    // userHistoryDataClient.clearAllUserHistoryData();
+    userHistoryDataClient.stopChat();
+    console.log("终止成功", userHistoryDataClient.getChatDatas());
   }
 };
 
 // -------------------------------
 // 选择 qwen-turbo 模型
-const qwenTurbo = async function* (model) {
+const qwenTurbo = async function* (model, controller) {
   const nowData = {
     model: model,
     messages: [...userHistoryDataClient.getChatDatas()],
@@ -109,6 +126,8 @@ const qwenTurbo = async function* (model) {
   };
 
   try {
+    // 保存控制器
+    currentController = controller;
     const response = await fetch(
       "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
       {
@@ -119,7 +138,8 @@ const qwenTurbo = async function* (model) {
           Accept: "text/event-stream",
           "X-DashScope-SSE": "enable"
         },
-        body: JSON.stringify(nowData)
+        body: JSON.stringify(nowData),
+        signal: controller.signal //控制中断的字段
       }
     );
 
@@ -131,11 +151,21 @@ const qwenTurbo = async function* (model) {
     const decoder = new TextDecoder();
     let buffer = "";
     while (true) {
+      // 如果控制器被中断
+      if (controller.signal.aborted) {
+        console.log("中断筛选流式");
+        yield {
+          content: "",
+          finish_reason: true,
+          isStop: true
+        };
+        break;
+      }
       const { value, done } = await reader.read();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      console.log("buffer", buffer);
+      // console.log("buffer", buffer);
       const lines = buffer.split("\n");
       buffer = lines.pop() || ""; // 保留未完成的行
       // console.log("lines", lines);
@@ -161,18 +191,23 @@ const qwenTurbo = async function* (model) {
       }
     }
   } catch (error) {
-    console.error("Stream error:", error);
+    console.error("Stream error(qwenTurbo):", error);
     throw error;
+  } finally {
+    // 清空控制器
+    currentController = null;
   }
 };
 
 // 选择 ollama 模型
-const ollama = async function* () {
+const ollama = async function* (controller) {
   const ollamaConfig = {
     apiUrl: "http://localhost:11434/api/chat",
     modelName: "qwen2.5"
   };
   try {
+    // 保存控制器
+    currentController = controller;
     const response = await fetch(ollamaConfig.apiUrl, {
       method: "POST",
       headers: {
@@ -181,7 +216,8 @@ const ollama = async function* () {
       body: JSON.stringify({
         model: ollamaConfig.modelName,
         messages: [...userHistoryDataClient.getChatDatas()],
-        stream: true
+        stream: true,
+        signal: controller.signal //控制中断的字段
       })
     });
     // 获取到数据,流式数据需要处理
@@ -234,8 +270,11 @@ const ollama = async function* () {
     }
     // console.log("buffer", buffer);
   } catch (error) {
-    console.error("Error sending message:", error);
+    console.error("Error sending message(ollama):", error);
     throw error;
+  } finally {
+    // 清空控制器
+    currentController = null;
   }
 };
 

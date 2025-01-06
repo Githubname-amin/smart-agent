@@ -11,7 +11,11 @@ import {
   PictureOutlined
 } from "@ant-design/icons";
 import { handleCopyMessage, detectIfCode } from "../../utils";
-import { userHistoryDataClient, sendHTTPChat } from "../../server/model";
+import {
+  userHistoryDataClient,
+  sendHTTPChat,
+  stopCurrentChat
+} from "../../server/model";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
@@ -27,6 +31,7 @@ import {
 const Chat = () => {
   const [currentData, setCurrentData] = useState({ traceId: "", message: [] });
   const [isComposing, setIsComposing] = useState(false); // 是否正在对话的状态
+  const isComposingRef = useRef(false);
   const [inputValue, setInputValue] = useState("");
   const [pastedCodeData, setPastedCodeData] = useState(""); // 粘贴的代码数据
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false); // 是否正在加载 prompt 上下文，适用于最初加载和后续添加新代码快
@@ -225,9 +230,14 @@ const Chat = () => {
 
   // 和模型对话
   const handleSendMessage = async () => {
-    if (isComposing) return;
+    // 停止当前对话
+    if (!inputValue) {
+      message.warning("请输入问题");
+      return;
+    }
     // 发送信息后or初次对话的时候触发当前请求
     setIsComposing(true);
+    isComposingRef.current = true;
 
     // 前端校验结束，那么录入信息
     const nowUserMessage = {
@@ -257,15 +267,34 @@ const Chat = () => {
       const nowChatData = actionContextFn(inputValue);
       userHistoryDataClient.addChatData(nowChatData);
       const response = await sendHTTPChat({ model: currentModel });
-      console.log("response前端js", response, nowChatData);
+      // console.log(
+      //   "response前端js",
+      //   response,
+      //   nowChatData,
+      //   isComposing,
+      //   isComposingRef.current
+      // );
 
       // 用for await 来处理流式响应
       // 使用buffer来处理流式响应
       for await (const chunk of response) {
+        console.log("isComposing", isComposing, isComposingRef.current, chunk);
+        // 注意中途中断
+        // if (!isComposingRef.current) {
+        //   const resultAll = codeBuffer.current.flush();
+        //   console.log("中断", chunk, resultAll);
+        //   break;
+        // }
         const content = chunk.content;
+        const result = await codeBuffer.current.processWindow(content);
+        // 中途主动中断
+        if (chunk?.isStop) {
+          const resultAll = codeBuffer.current.flush();
+          console.log("中断", chunk, resultAll);
+          // break;
+        }
         // 需要保存一份纯粹的字符串形式，后续作为chat应答发送给下一次对话
         historyChatDatas.current += content;
-        const result = await codeBuffer.current.processWindow(content);
         if (chunk?.finish_reason) {
           const resultAll = codeBuffer.current.flush();
           userHistoryDataClient.addChatData({
@@ -284,7 +313,7 @@ const Chat = () => {
           );
           // debugger;
         }
-        // console.log("result", result, content, currentData);
+        console.log("result", result, content, currentData);
         if (result) {
           if (result.type === "text") {
             const nowTextTraceId = result.traceId;
@@ -394,6 +423,7 @@ const Chat = () => {
     } finally {
       setInputValue("");
       setIsComposing(false);
+      isComposingRef.current = false;
     }
 
     // 假设已经获取到了数据
@@ -402,6 +432,18 @@ const Chat = () => {
 
     // 成功后判断是否存在上下文
     // setCurrentData(data);
+  };
+
+  // 终止对话
+  const handleStopSendMessage = () => {
+    console.log("handleStopSendMessage");
+    stopCurrentChat();
+    // 延时100ms停顿，防止重复操作
+    setTimeout(() => {
+      setIsComposing(false);
+      isComposingRef.current = false;
+    }, 100);
+    return;
   };
 
   // 处理服务端传递代码的逻辑
@@ -712,8 +754,6 @@ const Chat = () => {
             className="chat-input-textarea"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            // onCompositionStart={() => setIsComposing(true)}
-            // onCompositionEnd={() => setIsComposing(false)}
             onPaste={handleOnPaste}
             onPressEnter={(e) => {
               if (e.shiftKey) {
@@ -723,7 +763,7 @@ const Chat = () => {
               handleSendMessage(isTop);
             }}
             placeholder="输入消息按Enter发送，Shift+Enter换行"
-            disabled={isComposing}
+            disabled={isComposingRef.current}
           />
           <div className="chat-action-box">
             <div className="chat-action-box-model">
@@ -748,12 +788,13 @@ const Chat = () => {
                 </div>
               </Upload>
             </div>
-            <Button
-              className="chat-submit-btn"
-              onClick={() => handleSendMessage(isTop)}
-            >
-              {isComposing ? "停止" : "发送 "}
-            </Button>
+            <div className="chat-submit-btn">
+              {isComposingRef.current ? (
+                <Button onClick={() => handleStopSendMessage()}>停止</Button>
+              ) : (
+                <Button onClick={() => handleSendMessage()}>发送</Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
