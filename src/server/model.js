@@ -1,5 +1,5 @@
 // 与大模型交互的接口定义处
-import { MODEL_CONFIG } from "./config";
+import { MODEL_CONFIG, OllamaConfig } from "./config";
 import axios from "axios";
 
 // 添加请求控制器,用来终止流式请求
@@ -201,24 +201,20 @@ const qwenTurbo = async function* (model, controller) {
 
 // 选择 ollama 模型
 const ollama = async function* (controller) {
-  const ollamaConfig = {
-    apiUrl: "http://localhost:11434/api/chat",
-    modelName: "qwen2.5"
-  };
   try {
     // 保存控制器
     currentController = controller;
-    const response = await fetch(ollamaConfig.apiUrl, {
+    const response = await fetch(OllamaConfig.apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: ollamaConfig.modelName,
+        model: OllamaConfig.modelName,
         messages: [...userHistoryDataClient.getChatDatas()],
-        stream: true,
-        signal: controller.signal //控制中断的字段
-      })
+        stream: true
+      }),
+      signal: controller.signal //控制中断的字段
     });
     // 获取到数据,流式数据需要处理
     console.log("response66777", response);
