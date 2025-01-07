@@ -136,8 +136,13 @@ const Chat = () => {
 
   // 这个方法最早执行，只执行一次。后续则是其他接口传递 prompt，然后修改那个数组
   // 在链接后传递基础上下文，一般最初为超级长的上下文描述
-  const handleRequestPrompt = (ws, request) => {
-    console.log("handleRequestPrompt前端页面", ws, request);
+  const handleRequestPrompt = (request = {
+    traceId: "",
+    data: {
+      userPrompt: "",
+      systemPrompt: "你是一个出色的程序员."
+    }
+  }) => {
     setIsLoadingPrompt(true);
     if (request.success) {
       // 判断传递过来的信息是怎样的？超长字符串？还是代码块？
@@ -146,13 +151,11 @@ const Chat = () => {
       // 录入到上下文信息中
       const startUserChatData = {
         role: "user",
-        content: "这是一些基础对话上下文信息" + request?.data?.userPrompt
+        content: request.data.userPrompt
       };
       const startAssistantChatData = {
         role: "system",
-        content:
-          "这是一些基础设定信息" +
-          (request?.data?.systemPrompt || "你是一个出色的程序员.")
+        content:request.data.systemPrompt
       };
       // 初始化上下文
       userHistoryDataClient.initChatDatas(
@@ -164,33 +167,29 @@ const Chat = () => {
         { traceId: request?.traceId, code: request?.data?.code }
       ];
       // 设置当前请求到的prompt进入输入框上下文，需要联调后检查是否这个意思
-      // setCurrentInputContextList([
-      //   {
-      //     traceId: request?.traceId,
-      //     type: "prompt",
-      //     role: "user",
-      //     content: request?.data?.userPrompt,
-      //     fileName: "userPrompt"
-      //   },
-      //   {
-      //     traceId: request?.traceId,
-      //     type: "prompt",
-      //     role: "system",
-      //     content: request?.data?.systemPrompt,
-      //     fileName: "systemPrompt"
-      //   }
-      // ]);
-      setIsLoadingPrompt(false);
-
-      // 前端发送一个请求回后端
-      ws.send({
-        type: "chatPromptResponseSuccess",
-        success: true,
-        tracerId: "xxxx",
-        data: {
-          answer: "这是测试的返回报文"
+      setCurrentInputContextList([
+        {
+          traceId: request?.traceId,
+          type: "prompt",
+          role: "user",
+          content: request?.data?.userPrompt,
+          fileName: "userPrompt"
+        },
+        {
+          traceId: request?.traceId,
+          type: "prompt",
+          role: "system",
+          content: request?.data?.systemPrompt,
+          fileName: "systemPrompt"
         }
-      });
+      ]);
+      setIsLoadingPrompt(false);
+      return {
+        succese:true,
+        data:{
+          answer:""
+        }
+      }
     }
   };
 
@@ -201,6 +200,7 @@ const Chat = () => {
       role: "user",
       content: ""
     };
+    console.log(currentInputContextList)
     if (currentInputContextList.length > 0) {
       currentInputContextList.forEach((item) => {
         if (item.type === "prompt") {
@@ -224,9 +224,153 @@ const Chat = () => {
         "这些是你上方提到的信息，请在回答的时候注意语境" +
         currentInputContextList.map((item) => item.content).join("\n");
     }
-    nowUserMessage.content += "我现在的问题是：" + inputValue;
+    nowUserMessage.content += inputValue;
+    console.log("nowUserMessage:",nowUserMessage)
     return nowUserMessage;
   };
+
+  /**
+   * 流式请求大模型
+   */
+  const stream = async ()=>{
+    const response = await sendHTTPChat({ model: currentModel });
+    for await (const chunk of response) {
+      const content = chunk.content;
+      const result = codeBuffer.current.processWindow(content);
+      // 中途主动中断
+      if (chunk?.isStop) {
+        const resultAll = codeBuffer.current.flush();
+        console.log("中断", chunk, resultAll);
+        break;
+      }
+      // 需要保存一份纯粹的字符串形式，后续作为chat应答发送给下一次对话
+      historyChatDatas.current += content;
+      if (chunk?.finish_reason) {
+        const resultAll = codeBuffer.current.flush();
+        userHistoryDataClient.addChatData({
+          // type: "requestAdd",
+          role: "assistant",
+          content: historyChatDatas.current
+        });
+        // debugger;
+      }
+      console.log(result)
+      if (result) {
+        if (result.type === "text") {
+          const nowTextTraceId = result.traceId;
+          setCurrentData((prevData) => {
+            const newMessage = [...prevData.message];
+            const lastMessage = newMessage[newMessage.length - 1];
+            if (
+              lastMessage.role === "assistant" &&
+              !lastMessage.content.find(
+                (item) =>
+                  item.type === "text" && item.traceId === nowTextTraceId
+              )
+            ) {
+              lastMessage.content.push({
+                type: "text",
+                traceId: nowTextTraceId,
+                content: ""
+              });
+            }
+            return { ...prevData, message: newMessage };
+          });
+
+          const existText = currentMarkdownListRef.current.find(
+            (item) => item.traceId === nowTextTraceId
+          );
+          if (existText) {
+            const currentText = existText.text;
+            const newText = currentText + result.text;
+            const newMessage = currentMarkdownListRef.current.map((item) =>
+              item.traceId === nowTextTraceId
+                ? { ...item, text: newText }
+                : item
+            );
+            currentMarkdownListRef.current = newMessage;
+            setCurrentMarkdownString(newMessage);
+          } else {
+            // 初次录入
+            const newList = [
+              ...currentMarkdownListRef.current,
+              {
+                traceId: nowTextTraceId,
+                text: result.text
+              }
+            ];
+            currentMarkdownListRef.current = newList;
+            setCurrentMarkdownString(newList);
+          }
+        }
+        if (result.type === "code") {
+          const nowTraceId = result.traceId;
+          // 如果对于当前的这次代码块没有位置,则录入一个空数组,用于渲染页面
+          // 这里也可能直接是返回代码,那么没有assistant数据
+          setCurrentData((prevData) => {
+            const newMessage = [...prevData.message];
+            const lastMessage = newMessage[newMessage.length - 1];
+            if (
+              lastMessage.role === "assistant" &&
+              !lastMessage.content.find(
+                (item) => item.type === "code" && item.traceId === nowTraceId
+              )
+            ) {
+              lastMessage.content.push({
+                type: "code",
+                content: "",
+                traceId: nowTraceId
+              });
+            }
+            return { ...prevData, message: newMessage }; // 这里需要返回新的状态
+          });
+
+          const existingBlock = currentCodeBlockListRef.current.find(
+            (item) => item.traceId === nowTraceId
+          );
+          if (existingBlock) {
+            // 存在这条代码,更新,在后面加上现在返回的代码
+            const currentCode = existingBlock.code;
+            const newCode = currentCode + result.code;
+            const updateList = currentCodeBlockListRef.current.map((item) =>
+              item.traceId === nowTraceId ? { ...item, code: newCode } : item
+            );
+            currentCodeBlockListRef.current = updateList;
+            setCurrentCodeBlockList(updateList);
+          } else {
+            // 如果是其他代码块，需要保留之前代码块
+            const newList = [
+              ...currentCodeBlockListRef.current,
+              {
+                traceId: nowTraceId,
+                code: result.code,
+                language: result.language
+              }
+            ];
+            currentCodeBlockListRef.current = newList;
+            setCurrentCodeBlockList(newList);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * 在页面推送聊天消息框
+   * @param {*} value 
+   * @param {*} role 
+   */
+  const pushMessage = (value,role)=>{
+    const nowUserMessage = {
+      role: role,
+      content: value,
+      time: new Date().toLocaleTimeString()
+    };
+    setCurrentData((prevData) => ({
+      ...prevData,
+      message: [...prevData?.message, nowUserMessage]
+    }));
+  }
 
   // 和模型对话
   const handleSendMessage = async () => {
@@ -266,158 +410,7 @@ const Chat = () => {
       // 准备本次对话需要的上下文
       const nowChatData = actionContextFn(inputValue);
       userHistoryDataClient.addChatData(nowChatData);
-      const response = await sendHTTPChat({ model: currentModel });
-      // console.log(
-      //   "response前端js",
-      //   response,
-      //   nowChatData,
-      //   isComposing,
-      //   isComposingRef.current
-      // );
-
-      // 用for await 来处理流式响应
-      // 使用buffer来处理流式响应
-      for await (const chunk of response) {
-        console.log("isComposing", isComposing, isComposingRef.current, chunk);
-        // 注意中途中断
-        // if (!isComposingRef.current) {
-        //   const resultAll = codeBuffer.current.flush();
-        //   console.log("中断", chunk, resultAll);
-        //   break;
-        // }
-        const content = chunk.content;
-        const result = await codeBuffer.current.processWindow(content);
-        // 中途主动中断
-        if (chunk?.isStop) {
-          const resultAll = codeBuffer.current.flush();
-          console.log("中断", chunk, resultAll);
-          // break;
-        }
-        // 需要保存一份纯粹的字符串形式，后续作为chat应答发送给下一次对话
-        historyChatDatas.current += content;
-        if (chunk?.finish_reason) {
-          const resultAll = codeBuffer.current.flush();
-          userHistoryDataClient.addChatData({
-            // type: "requestAdd",
-            role: "assistant",
-            content: historyChatDatas.current
-          });
-          console.log(
-            "resultStop",
-            result,
-            resultAll,
-            content,
-            currentData
-            // userHistoryDataClient
-            // historyChatDatas
-          );
-          // debugger;
-        }
-        console.log("result", result, content, currentData);
-        if (result) {
-          if (result.type === "text") {
-            const nowTextTraceId = result.traceId;
-            setCurrentData((prevData) => {
-              const newMessage = [...prevData.message];
-              const lastMessage = newMessage[newMessage.length - 1];
-              if (
-                lastMessage.role === "assistant" &&
-                !lastMessage.content.find(
-                  (item) =>
-                    item.type === "text" && item.traceId === nowTextTraceId
-                )
-              ) {
-                lastMessage.content.push({
-                  type: "text",
-                  traceId: nowTextTraceId,
-                  content: ""
-                });
-              }
-              return { ...prevData, message: newMessage };
-            });
-
-            const existText = currentMarkdownListRef.current.find(
-              (item) => item.traceId === nowTextTraceId
-            );
-            if (existText) {
-              const currentText = existText.text;
-              const newText = currentText + result.text;
-              const newMessage = currentMarkdownListRef.current.map((item) =>
-                item.traceId === nowTextTraceId
-                  ? { ...item, text: newText }
-                  : item
-              );
-              currentMarkdownListRef.current = newMessage;
-              setCurrentMarkdownString(newMessage);
-            } else {
-              // 初次录入
-              const newList = [
-                ...currentMarkdownListRef.current,
-                {
-                  traceId: nowTextTraceId,
-                  text: result.text
-                }
-              ];
-              currentMarkdownListRef.current = newList;
-              setCurrentMarkdownString(newList);
-            }
-          }
-          if (result.type === "code") {
-            const nowTraceId = result.traceId;
-            // 如果对于当前的这次代码块没有位置,则录入一个空数组,用于渲染页面
-            // 这里也可能直接是返回代码,那么没有assistant数据
-            setCurrentData((prevData) => {
-              const newMessage = [...prevData.message];
-              const lastMessage = newMessage[newMessage.length - 1];
-              if (
-                lastMessage.role === "assistant" &&
-                !lastMessage.content.find(
-                  (item) => item.type === "code" && item.traceId === nowTraceId
-                )
-              ) {
-                lastMessage.content.push({
-                  type: "code",
-                  content: "",
-                  traceId: nowTraceId
-                });
-              }
-              return { ...prevData, message: newMessage }; // 这里需要返回新的状态
-            });
-            // 处理代码
-            // console.log(
-            //   "currentCodeBlockListRef",
-            //   currentCodeBlockListRef,
-            //   currentCodeBlockListRef.current[0]?.traceId === result.traceId
-            // );
-
-            const existingBlock = currentCodeBlockListRef.current.find(
-              (item) => item.traceId === nowTraceId
-            );
-            if (existingBlock) {
-              // 存在这条代码,更新,在后面加上现在返回的代码
-              const currentCode = existingBlock.code;
-              const newCode = currentCode + result.code;
-              const updateList = currentCodeBlockListRef.current.map((item) =>
-                item.traceId === nowTraceId ? { ...item, code: newCode } : item
-              );
-              currentCodeBlockListRef.current = updateList;
-              setCurrentCodeBlockList(updateList);
-            } else {
-              // 如果是其他代码块，需要保留之前代码块
-              const newList = [
-                ...currentCodeBlockListRef.current,
-                {
-                  traceId: nowTraceId,
-                  code: result.code,
-                  language: result.language
-                }
-              ];
-              currentCodeBlockListRef.current = newList;
-              setCurrentCodeBlockList(newList);
-            }
-          }
-        }
-      }
+      stream()
     } catch (error) {
       console.error("Error sending message:", error);
     } finally {
@@ -460,20 +453,11 @@ const Chat = () => {
   };
 
   // 插件在idea选中一段代码，传递给前端，让前端展示
-  const handleInsertCodeToEditor = (ws, request) => {
+  const handleInsertCodeToEditor = request => {
     // console.log("handleInsertCodeToEditor前端页面", ws, request);
 
-    if (request.success) {
-      // 成功后，需要将代码插入到输入框中
-
-      // 前端发送一个请求回后端
-      if (true) {
-        ws.send({
-          type: "insertCodeToEditorResponseSuccess",
-          success: true,
-          tracerId: "xxxx"
-        });
-      }
+    return{
+      success:true
     }
   };
 
@@ -657,9 +641,8 @@ const Chat = () => {
     const isTop = type === "top";
     return (
       <div
-        className={`chat-input-component ${
-          isTop ? "" : "chat-input-component-bottom"
-        }`}
+        className={`chat-input-component ${isTop ? "" : "chat-input-component-bottom"
+          }`}
       >
         <div className="chat-input-component-title">
           <div className="chat-input-component-title-text-box">
@@ -683,11 +666,10 @@ const Chat = () => {
               currentInputContextList.map((item, index) => {
                 return (
                   <div
-                    className={`chat-input-component-title-traceId ${
-                      currentSelectCode?.traceId === item?.traceId
+                    className={`chat-input-component-title-traceId ${currentSelectCode?.traceId === item?.traceId
                         ? "chat-input-component-title-traceId-active"
                         : ""
-                    }`}
+                      }`}
                     // key={item?.traceId}
                     key={index}
                   >
@@ -804,13 +786,10 @@ const Chat = () => {
   useEffect(() => {
     console.log("useEffect", window.intellij);
 
-    // 监听服务端传递代码的动作
+    // 挂载weboskcet处理函数
     registerApiCallbackFn("chat/prompt", handleRequestPrompt);
     registerApiCallbackFn("chat/select_code", handleSelectCode);
-    registerApiCallbackFn(
-      "chat/insert_code_to_input",
-      handleInsertCodeToEditor
-    );
+    registerApiCallbackFn("chat/insert_code_to_input", handleInsertCodeToEditor);
 
     // 添加状态监听，所有状态变更都会走这个函数
     const handleStatusChange = (status) => {
@@ -852,9 +831,8 @@ const Chat = () => {
                   {currentData?.message.map((item, index) => (
                     <div key={index}>
                       <div
-                        className={`inputContainer ${
-                          item.role === "user" ? "user" : "assistant"
-                        }`}
+                        className={`inputContainer ${item.role === "user" ? "user" : "assistant"
+                          }`}
                       >
                         {/* <div className="chat-content-item-content-user-text-copy">
                           <CopyOutlined
