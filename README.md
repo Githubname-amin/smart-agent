@@ -1,70 +1,41 @@
-# Getting Started with Create React App
+# 项目简介
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+本项目是作为 intelliJ IDEA 插件的交互页面，用于将本地代码与大模型进行特定需求（自动生成单例、针对当前代码进行上下文对话等）
+本项目也可作为基础对话页面，直接运行不需依赖后端。
 
-## Available Scripts
+## 涉及内容
 
-In the project directory, you can run:
+- ✅ （本地/远程）模型请求 LLM
+- ✅ 流式数据处理，实时显示 AI 回答。保存单对话上下文、支持对话中断和继续。
+- ✅ 支持代码块高亮展示，支持流式文字展示，支持对话代码提问，支持对话内容的局部复制。
+- ✅ websocket 链接
+- ✅ 本地 Java 代码对应单例生成（需与后端搭配）
+- ✅ 本地 Java 代码解析
+- 🤔 代码检测
+- 🤔 代码补全
+- 🤔 多种信息格式的上下文支持（图片、文件、同项目代码）
 
-### `npm start`
+## 项目结构
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- src/page/chat/index.jsx 聊天页面
+- src/page/chat/index.less 聊天页面样式
+- src/server/model.js 模型请求相关方法、用户本次对话的记录
+- src/server/websocket.js 用于与插件建立 websocket 链接的相关方法
+- src/utils/buffer.js 交互数据流式处理相关方法
+- src/utils/index.js 其他方法
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
 
-### `npm test`
+# 项目运行 🚀
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 使用本地模型（Ollama）
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- 下载 ollama 模型
+  - 下载地址：[https://ollama.ai/models](https://ollama.com/)
+  - 选择模型（本代码使用 qwen2.5）[text](https://ollama.com/library/qwen2.5)
+    - 注意 ⚠️：不同代码的返回体需要查询对应文档，并稍微修改逻辑。
+- 启动 ollama 模型
+  - 启动 ollama : `ollama serve`
+- 修改 src/server/config.js 中的 OllamaConfig 模型名称
+  - 查询本地已下载的模型：`ollama list`
