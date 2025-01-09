@@ -24,10 +24,7 @@
 - src/utils/buffer.js 交互数据流式处理相关方法
 - src/utils/index.js 其他方法
 
-
 # 项目运行 🚀
-
-
 
 ## 使用本地模型（Ollama）
 
@@ -36,6 +33,11 @@
   - 选择模型（本代码使用 qwen2.5）[text](https://ollama.com/library/qwen2.5)
     - 注意 ⚠️：不同代码的返回体需要查询对应文档，并稍微修改逻辑。
 - 启动 ollama 模型
+  - 下载模型：`ollama pull qwen2.5`
   - 启动 ollama : `ollama serve`
 - 修改 src/server/config.js 中的 OllamaConfig 模型名称
+
   - 查询本地已下载的模型：`ollama list`
+
+- 其他：
+  - 建议选择模型的时候先直接 `ollama run qwen2.5`这样体验一下，看看是否能正常返回。

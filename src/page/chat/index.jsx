@@ -504,18 +504,15 @@ const Chat = () => {
               <span className="code-block-title-copy">
                 <QuestionOutlined
                   style={{ marginRight: "5px" }}
-                  // onClick={() =>
-                  //   handleQuestionToInput(
-                  //     currentCodeBlockList.find(
-                  //       (codeBlockItem) =>
-                  //         codeBlockItem.traceId === item.traceId
-                  //     ),
-                  //     "code"
-                  //   )
-                  // }
-                  onClick={() => {
-                    console.log("QuestionOutlined", currentCodeBlockList);
-                  }}
+                  onClick={() =>
+                    handleQuestionToInput(
+                      currentCodeBlockList.find(
+                        (codeBlockItem) =>
+                          codeBlockItem.traceId === item.traceId
+                      ),
+                      "code"
+                    )
+                  }
                 />
                 <CopyOutlined
                   onClick={() =>
@@ -626,6 +623,8 @@ const Chat = () => {
         }`}
       >
         <div className="chat-input-component-title">
+          {/* 暂时不展示这个功能区。因为这块的上下文拼接并非简单的文案描述，可能需要再讨论这块的设计 */}
+          {/*           
           <div className="chat-input-component-title-text-box">
             <div className="chat-input-component-title-text">
               <div>
@@ -641,7 +640,7 @@ const Chat = () => {
                 }}
               />
             )}
-          </div>
+          </div> */}
           <div className="chat-input-component-title-traceId-box">
             {currentInputContextList.length > 0 &&
               currentInputContextList.map((item, index) => {
