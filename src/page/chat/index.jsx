@@ -136,13 +136,15 @@ const Chat = () => {
 
   // 这个方法最早执行，只执行一次。后续则是其他接口传递 prompt，然后修改那个数组
   // 在链接后传递基础上下文，一般最初为超级长的上下文描述
-  const handleRequestPrompt = (request = {
-    traceId: "",
-    data: {
-      userPrompt: "",
-      systemPrompt: "你是一个出色的程序员."
+  const handleRequestPrompt = (
+    request = {
+      traceId: "",
+      data: {
+        userPrompt: "",
+        systemPrompt: "你是一个出色的程序员."
+      }
     }
-  }) => {
+  ) => {
     setIsLoadingPrompt(true);
     if (request.success) {
       // 判断传递过来的信息是怎样的？超长字符串？还是代码块？
@@ -155,7 +157,7 @@ const Chat = () => {
       };
       const startAssistantChatData = {
         role: "system",
-        content:request.data.systemPrompt
+        content: request.data.systemPrompt
       };
       // 初始化上下文
       userHistoryDataClient.initChatDatas(
@@ -164,7 +166,7 @@ const Chat = () => {
       );
       // 这是之前测试的写法
       currentCodeBlockListRef.current = [
-        { traceId: request?.traceId, code: request?.data?.code }
+        { traceId: request?.traceId, content: request?.data?.code }
       ];
       // 设置当前请求到的prompt进入输入框上下文，需要联调后检查是否这个意思
       setCurrentInputContextList([
@@ -185,26 +187,32 @@ const Chat = () => {
       ]);
       setIsLoadingPrompt(false);
       return {
-        succese:true,
-        data:{
-          answer:""
+        succese: true,
+        data: {
+          answer: ""
         }
-      }
+      };
     }
   };
 
-  // 处理当前对话上下文，产出可以给请求使用的上下文
+  /**
+   * 处理当前对话新增的上下文（也就是输入文字上方的附带区域），产出可以给请求使用的单词对话的prompt。
+   * @param {*} inputValue
+   * @returns
+   */
   const actionContextFn = (inputValue) => {
     const currentChatContext = [];
     const nowUserMessage = {
       role: "user",
       content: ""
     };
-    console.log(currentInputContextList)
+    console.log(currentInputContextList);
     if (currentInputContextList.length > 0) {
       currentInputContextList.forEach((item) => {
         if (item.type === "prompt") {
-          // 当前这样设计与userHistoryDataClient.initChatDatas功能冲突，因此先不做处理。问题出在和后端的业务理解当前不确定
+          // 这里原本是希望将当前选中的问题上下文进行统计，然后在请求时将其附带上去。
+          // 当前这样设计与userHistoryDataClient.initChatDatas功能冲突，因此先不做处理。
+          // 现在将输入框上方附带 prompt 的功能搁置，因为这块不能简单通过前端拼接。暂且搁置
           // currentChatContext.push({
           //   type: "promptAdd",
           //   role: "user",
@@ -225,18 +233,18 @@ const Chat = () => {
         currentInputContextList.map((item) => item.content).join("\n");
     }
     nowUserMessage.content += inputValue;
-    console.log("nowUserMessage:",nowUserMessage)
+    console.log("nowUserMessage:", nowUserMessage);
     return nowUserMessage;
   };
 
   /**
    * 流式请求大模型
    */
-  const stream = async ()=>{
+  const stream = async () => {
     const response = await sendHTTPChat({ model: currentModel });
     for await (const chunk of response) {
       const content = chunk.content;
-      const result = codeBuffer.current.processWindow(content);
+      const result = await codeBuffer.current.processWindow(content);
       // 中途主动中断
       if (chunk?.isStop) {
         const resultAll = codeBuffer.current.flush();
@@ -254,123 +262,117 @@ const Chat = () => {
         });
         // debugger;
       }
-      console.log(result)
+      // console.log(result);
       if (result) {
         if (result.type === "text") {
           const nowTextTraceId = result.traceId;
-          setCurrentData((prevData) => {
-            const newMessage = [...prevData.message];
-            const lastMessage = newMessage[newMessage.length - 1];
-            if (
-              lastMessage.role === "assistant" &&
-              !lastMessage.content.find(
-                (item) =>
-                  item.type === "text" && item.traceId === nowTextTraceId
-              )
-            ) {
-              lastMessage.content.push({
-                type: "text",
-                traceId: nowTextTraceId,
-                content: ""
-              });
+          pushMessage(
+            "Update",
+            {},
+            {
+              role: "assistant",
+              content: result.text,
+              nowTraceId: nowTextTraceId,
+              nowMessageType: "text",
+              nowMessageListRef: currentMarkdownListRef
             }
-            return { ...prevData, message: newMessage };
-          });
-
-          const existText = currentMarkdownListRef.current.find(
-            (item) => item.traceId === nowTextTraceId
           );
-          if (existText) {
-            const currentText = existText.text;
-            const newText = currentText + result.text;
-            const newMessage = currentMarkdownListRef.current.map((item) =>
-              item.traceId === nowTextTraceId
-                ? { ...item, text: newText }
-                : item
-            );
-            currentMarkdownListRef.current = newMessage;
-            setCurrentMarkdownString(newMessage);
-          } else {
-            // 初次录入
-            const newList = [
-              ...currentMarkdownListRef.current,
-              {
-                traceId: nowTextTraceId,
-                text: result.text
-              }
-            ];
-            currentMarkdownListRef.current = newList;
-            setCurrentMarkdownString(newList);
-          }
         }
         if (result.type === "code") {
           const nowTraceId = result.traceId;
           // 如果对于当前的这次代码块没有位置,则录入一个空数组,用于渲染页面
           // 这里也可能直接是返回代码,那么没有assistant数据
-          setCurrentData((prevData) => {
-            const newMessage = [...prevData.message];
-            const lastMessage = newMessage[newMessage.length - 1];
-            if (
-              lastMessage.role === "assistant" &&
-              !lastMessage.content.find(
-                (item) => item.type === "code" && item.traceId === nowTraceId
-              )
-            ) {
-              lastMessage.content.push({
-                type: "code",
-                content: "",
-                traceId: nowTraceId
-              });
+          pushMessage(
+            "Update",
+            {},
+            {
+              role: "assistant",
+              content: result.code,
+              language: result.language,
+              nowTraceId: nowTraceId,
+              nowMessageType: "code",
+              nowMessageListRef: currentCodeBlockListRef
             }
-            return { ...prevData, message: newMessage }; // 这里需要返回新的状态
-          });
-
-          const existingBlock = currentCodeBlockListRef.current.find(
-            (item) => item.traceId === nowTraceId
           );
-          if (existingBlock) {
-            // 存在这条代码,更新,在后面加上现在返回的代码
-            const currentCode = existingBlock.code;
-            const newCode = currentCode + result.code;
-            const updateList = currentCodeBlockListRef.current.map((item) =>
-              item.traceId === nowTraceId ? { ...item, code: newCode } : item
-            );
-            currentCodeBlockListRef.current = updateList;
-            setCurrentCodeBlockList(updateList);
-          } else {
-            // 如果是其他代码块，需要保留之前代码块
-            const newList = [
-              ...currentCodeBlockListRef.current,
-              {
-                traceId: nowTraceId,
-                code: result.code,
-                language: result.language
-              }
-            ];
-            currentCodeBlockListRef.current = newList;
-            setCurrentCodeBlockList(newList);
-          }
         }
       }
     }
-  }
+  };
 
   /**
-   * 在页面推送聊天消息框
-   * @param {*} value 
-   * @param {*} role 
+   * 在页面推送聊天消息框。
+   * 希望在页面上添加一条消息，然后更新到当前的页面中
+   * @param {*} type  当前添加消息到页面是新增记录还是更新记录 Add or Update
+   * @param {*} addMessageObject 新增消息对象 role,content
+   * @param {*} updateMessageObject 更新消息对象 role,content,language(选填),nowTraceId(必填，当前消息的id),
+   * nowMessageType(必填，当前消息块的类型,text,code),nowMessageListRef(必填，当前消息块的引用)
    */
-  const pushMessage = (value,role)=>{
-    const nowUserMessage = {
-      role: role,
-      content: value,
-      time: new Date().toLocaleTimeString()
-    };
-    setCurrentData((prevData) => ({
-      ...prevData,
-      message: [...prevData?.message, nowUserMessage]
-    }));
-  }
+  const pushMessage = (type, addMessageObject, updateMessageObject) => {
+    if (type === "Add") {
+      const nowUserMessage = {
+        role: addMessageObject.role,
+        content: addMessageObject.content,
+        time: new Date().toLocaleTimeString()
+      };
+      setCurrentData((prevData) => ({
+        ...prevData,
+        message: [...prevData?.message, nowUserMessage]
+      }));
+    } else if (type === "Update") {
+      setCurrentData((item) => {
+        const newMessage = [...item?.message];
+        const lastMessage = newMessage[newMessage.length - 1];
+        if (
+          lastMessage?.role === updateMessageObject?.role &&
+          lastMessage?.content &&
+          !lastMessage?.content?.find(
+            (item) =>
+              item?.traceId === updateMessageObject?.nowTraceId &&
+              item?.type === updateMessageObject.nowMessageType
+          )
+        ) {
+          lastMessage.content.push({
+            type: updateMessageObject?.nowMessageType,
+            traceId: updateMessageObject?.nowTraceId,
+            content: updateMessageObject?.content
+          });
+        }
+        return { ...item, message: newMessage };
+      });
+      // 更新 代码块 or 文本块的页面响应式
+      const existMessage = updateMessageObject.nowMessageListRef.current?.find(
+        (item) => item.traceId === updateMessageObject.nowTraceId
+      );
+      if (existMessage) {
+        const currentContent = existMessage.content;
+        const newContent = currentContent + updateMessageObject?.content;
+        const updateList = updateMessageObject.nowMessageListRef.current?.map(
+          (item) =>
+            item.traceId === updateMessageObject?.nowTraceId
+              ? { ...item, content: newContent }
+              : item
+        );
+        updateMessageObject.nowMessageListRef &&
+          (updateMessageObject.nowMessageListRef.current = updateList);
+        updateMessageObject.nowMessageType === "code"
+          ? setCurrentCodeBlockList(updateList)
+          : setCurrentMarkdownString(updateList);
+      } else {
+        const newList = [
+          ...updateMessageObject.nowMessageListRef.current,
+          {
+            traceId: updateMessageObject.nowTraceId,
+            content: updateMessageObject.content,
+            language: updateMessageObject.language
+          }
+        ];
+        updateMessageObject.nowMessageListRef.current = newList;
+        updateMessageObject.nowMessageType === "code"
+          ? setCurrentCodeBlockList(newList)
+          : setCurrentMarkdownString(newList);
+      }
+    }
+  };
 
   // 和模型对话
   const handleSendMessage = async () => {
@@ -384,33 +386,15 @@ const Chat = () => {
     isComposingRef.current = true;
 
     // 前端校验结束，那么录入信息
-    const nowUserMessage = {
-      role: "user",
-      content: inputValue,
-      time: new Date().toLocaleTimeString()
-    };
-    setCurrentData((prevData) => ({
-      ...prevData,
-      message: [...prevData?.message, nowUserMessage]
-    }));
-
+    pushMessage("Add", { role: "user", content: inputValue });
     // 创建助手的空消息
-    const assistantMessage = {
-      role: "assistant",
-      content: [],
-      time: new Date().toLocaleTimeString()
-    };
-    setCurrentData((prevData) => ({
-      ...prevData,
-      message: [...prevData.message, assistantMessage]
-    }));
+    pushMessage("Add", { role: "assistant", content: [] });
 
-    // 已经建立链接，已经录入问题，已经得到prompt，开始请求
     try {
       // 准备本次对话需要的上下文
       const nowChatData = actionContextFn(inputValue);
       userHistoryDataClient.addChatData(nowChatData);
-      stream()
+      stream();
     } catch (error) {
       console.error("Error sending message:", error);
     } finally {
@@ -418,13 +402,6 @@ const Chat = () => {
       setIsComposing(false);
       isComposingRef.current = false;
     }
-
-    // 假设已经获取到了数据
-
-    // 判断请求是否成功
-
-    // 成功后判断是否存在上下文
-    // setCurrentData(data);
   };
 
   // 终止对话
@@ -446,19 +423,19 @@ const Chat = () => {
     currentCodeBlockListRef.current = [
       {
         traceId: request.traceId,
-        code: request.data.code,
+        content: request.data.code,
         language: request.data.language
       }
     ];
   };
 
   // 插件在idea选中一段代码，传递给前端，让前端展示
-  const handleInsertCodeToEditor = request => {
+  const handleInsertCodeToEditor = (request) => {
     // console.log("handleInsertCodeToEditor前端页面", ws, request);
 
-    return{
-      success:true
-    }
+    return {
+      success: true
+    };
   };
 
   // --------------------------------------------------------
@@ -476,7 +453,7 @@ const Chat = () => {
     const nowQuestion = {
       traceId: item.traceId,
       type: type,
-      content: type === "code" ? item.code : item.text,
+      content: item.content,
       language: type === "code" ? item.language : "",
       // 为后续准备，如果有文件名称，则展示文件名称。如果没有，则是文本
       // 展示文本的一小部分文案，然后...表示更多
@@ -527,15 +504,18 @@ const Chat = () => {
               <span className="code-block-title-copy">
                 <QuestionOutlined
                   style={{ marginRight: "5px" }}
-                  onClick={() =>
-                    handleQuestionToInput(
-                      currentCodeBlockList.find(
-                        (codeBlockItem) =>
-                          codeBlockItem.traceId === item.traceId
-                      ),
-                      "code"
-                    )
-                  }
+                  // onClick={() =>
+                  //   handleQuestionToInput(
+                  //     currentCodeBlockList.find(
+                  //       (codeBlockItem) =>
+                  //         codeBlockItem.traceId === item.traceId
+                  //     ),
+                  //     "code"
+                  //   )
+                  // }
+                  onClick={() => {
+                    console.log("QuestionOutlined", currentCodeBlockList);
+                  }}
                 />
                 <CopyOutlined
                   onClick={() =>
@@ -560,7 +540,7 @@ const Chat = () => {
               {
                 currentCodeBlockList.find(
                   (codeBlockItem) => codeBlockItem.traceId === item.traceId
-                )?.code
+                )?.content
               }
             </SyntaxHighlighter>
           </div>
@@ -576,7 +556,7 @@ const Chat = () => {
                 currentMarkdownString.find(
                   (markdownStringItem) =>
                     markdownStringItem.traceId === item.traceId
-                )?.text
+                )?.content
               }
             </ReactMarkdown>
             <div className="chat-content-item-content-user-text-copy">
@@ -597,7 +577,7 @@ const Chat = () => {
                     currentMarkdownString.find(
                       (markdownStringItem) =>
                         markdownStringItem.traceId === item.traceId
-                    )?.text
+                    )?.content
                   )
                 }
               />
@@ -641,8 +621,9 @@ const Chat = () => {
     const isTop = type === "top";
     return (
       <div
-        className={`chat-input-component ${isTop ? "" : "chat-input-component-bottom"
-          }`}
+        className={`chat-input-component ${
+          isTop ? "" : "chat-input-component-bottom"
+        }`}
       >
         <div className="chat-input-component-title">
           <div className="chat-input-component-title-text-box">
@@ -666,10 +647,11 @@ const Chat = () => {
               currentInputContextList.map((item, index) => {
                 return (
                   <div
-                    className={`chat-input-component-title-traceId ${currentSelectCode?.traceId === item?.traceId
+                    className={`chat-input-component-title-traceId ${
+                      currentSelectCode?.traceId === item?.traceId
                         ? "chat-input-component-title-traceId-active"
                         : ""
-                      }`}
+                    }`}
                     // key={item?.traceId}
                     key={index}
                   >
@@ -789,7 +771,10 @@ const Chat = () => {
     // 挂载weboskcet处理函数
     registerApiCallbackFn("chat/prompt", handleRequestPrompt);
     registerApiCallbackFn("chat/select_code", handleSelectCode);
-    registerApiCallbackFn("chat/insert_code_to_input", handleInsertCodeToEditor);
+    registerApiCallbackFn(
+      "chat/insert_code_to_input",
+      handleInsertCodeToEditor
+    );
 
     // 添加状态监听，所有状态变更都会走这个函数
     const handleStatusChange = (status) => {
@@ -831,8 +816,9 @@ const Chat = () => {
                   {currentData?.message.map((item, index) => (
                     <div key={index}>
                       <div
-                        className={`inputContainer ${item.role === "user" ? "user" : "assistant"
-                          }`}
+                        className={`inputContainer ${
+                          item.role === "user" ? "user" : "assistant"
+                        }`}
                       >
                         {/* <div className="chat-content-item-content-user-text-copy">
                           <CopyOutlined
